@@ -3,8 +3,15 @@ package com.maaitlunghau.myFirstApp;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
+/**
+ * ------------------------------------
+ * @Primary
+ * ------------------------------------
+ * - Đánh dấu Bean này ưu tiên sử dụng khi có Bean khác cùng implement Computer
+ * - Tuy nhiên, sự uy tiên của @Primary sẽ thấp hơn (ko bằng) so với @Qualifier
+ */
 @Component
-@Primary
+@Primary 
 public class Desktop implements Computer {
     
     public void compile() {

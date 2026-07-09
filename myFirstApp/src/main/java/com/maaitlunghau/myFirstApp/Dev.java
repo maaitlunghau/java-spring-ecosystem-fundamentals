@@ -1,6 +1,7 @@
 package com.maaitlunghau.myFirstApp;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 /**
@@ -24,6 +25,7 @@ public class Dev {
 
     // field injection
     @Autowired
+    @Qualifier("macbook") // chỉ đích danh tên Bean muốn dùng (Macbook), @Qualifier > @Primary
     private Computer comp;
 
     // setter injection
