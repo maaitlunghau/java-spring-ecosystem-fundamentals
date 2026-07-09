@@ -39,7 +39,9 @@ public class Dev {
     // constructor injection
     // public Dev(Macbook mac) {
     //     this.mac = mac;
-    // }
+    /**
+     * Builds the application using the injected computer.
+     */
 
     public void build() {
         System.out.println("DEV: Building the application...");

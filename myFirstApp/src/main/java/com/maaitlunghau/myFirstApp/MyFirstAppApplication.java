@@ -7,6 +7,11 @@ import org.springframework.context.ApplicationContext;
 @SpringBootApplication
 public class MyFirstAppApplication {
 
+	/**
+	 * Starts the Spring application and runs the {@code Dev} bean.
+	 *
+	 * @param args command-line arguments passed to the application
+	 */
 	public static void main(String[] args) {
 
 		// NO IoC

@@ -1,5 +1,8 @@
 package com.maaitlunghau.myFirstApp;
 
 public interface Computer {
-    void compile();
+    /**
+ * Compiles the computer's current work.
+ */
+void compile();
 }
