@@ -124,3 +124,44 @@ sequenceDiagram
   ApplicationContext-->>MyFirstAppApplication: Dev bean
   MyFirstAppApplication->>Dev: build()
   Dev->>Macbook: compile()
+
+
+
+-------------------------------
+Spring Boot vs Spring thuần (Spring Framework core)
+-------------------------------
+- Spring Boot KHÔNG PHẢI một framework khác, KHÔNG thay thế Spring
+- Spring Boot = Spring Framework + Auto-configuration + Embedded Server + Starter Dependencies
+- IoC Container, DI, AOP, ApplicationContext bên trong vẫn y hệt Spring thuần
+- Spring Boot chỉ là lớp "đóng gói thông minh" giúp giảm config thủ công (áp dụng CoC)
+
+- So sánh chi tiết
+┌────────────────────┬──────────────────────────────┬───────────────────────────────┐
+│                    │        Spring thuần          │         Spring Boot           │
+├────────────────────┼──────────────────────────────┼───────────────────────────────┤
+│ Config             │ XML/Java Config viết tay,    │ Auto-configuration,           │
+│                    │ khai báo tường minh mọi thứ  │ convention-based (CoC)        │
+├────────────────────┼──────────────────────────────┼───────────────────────────────┤
+│ Server             │ External (tự cài Tomcat/     │ Embedded (đóng gói sẵn        │
+│                    │ Jetty riêng)                 │ trong jar — Tomcat/Jetty/     │
+│                    │                              │ Undertow)                     │
+├────────────────────┼──────────────────────────────┼───────────────────────────────┤
+│ Package output     │ .war (deploy vào server có   │ .jar (executable, chạy        │
+│                    │ sẵn)                         │ độc lập: java -jar app.jar)   │
+├────────────────────┼──────────────────────────────┼───────────────────────────────┤
+│ Dependency version │ Tự quản lý version từng thư  │ Starter Dependencies +        │
+│                    │ viện, dễ conflict            │ BOM quản lý version sẵn       │
+├────────────────────┼──────────────────────────────┼───────────────────────────────┤
+│ Boilerplate        │ Nhiều                        │ Rất ít                        │
+├────────────────────┼──────────────────────────────┼───────────────────────────────┤
+│ Production tooling │ Không có sẵn, phải tự tích   │ Có sẵn Spring Boot Actuator   │
+│                    │ hợp thư viện riêng           │ (/actuator/health, /metrics)  │
+├────────────────────┼──────────────────────────────┼───────────────────────────────┤
+│ Độ linh hoạt       │ Cao hơn — kiểm soát từng     │ Thấp hơn — phải hiểu          │
+│ (customize sâu)    │ chi tiết                     │ auto-config để override đúng  │
+└────────────────────┴──────────────────────────────┴───────────────────────────────┘
+
+- Ghi nhớ
++ Spring Boot không "thông minh" tự nhiên — nó chạy dựa trên @ConditionalOnClass, @ConditionalOnMissingBean... để quyết định có auto-config bean nào hay không
++ Khi gặp lỗi lạ (bean conflict, auto-config sai thứ tự) 
+=> phải hiểu Spring core (IoC, Bean lifecycle, ApplicationContext) mới debug được tận gốc, không chỉ "thêm annotation là chạy"
