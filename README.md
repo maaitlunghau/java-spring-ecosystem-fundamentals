@@ -182,6 +182,30 @@ Spring Boot áp dụng nguyên tắc "quy ước hơn cấu hình" — không co
 
 ---
 
+### Spring Boot vs Spring thuần (Spring Framework Core)
+
+> Spring Boot **KHÔNG PHẢI** một framework khác, **KHÔNG** thay thế Spring.
+>
+> `Spring Boot = Spring Framework + Auto-configuration + Embedded Server + Starter Dependencies`
+>
+> IoC Container, DI, AOP, ApplicationContext bên trong vẫn y hệt Spring thuần — Spring Boot chỉ là lớp "đóng gói thông minh" giúp giảm config thủ công.
+
+| | Spring thuần | Spring Boot |
+|---|---|---|
+| Config | XML/Java Config viết tay, khai báo tường minh mọi thứ | Auto-configuration, convention-based (CoC) |
+| Server | External — tự cài Tomcat/Jetty riêng | Embedded — đóng gói sẵn trong jar |
+| Package output | `.war` — deploy vào server có sẵn | `.jar` — chạy độc lập: `java -jar app.jar` |
+| Dependency version | Tự quản lý, dễ conflict | Starter + BOM quản lý version sẵn |
+| Boilerplate | Nhiều | Rất ít |
+| Production tooling | Tự tích hợp riêng | Có sẵn Spring Boot Actuator |
+| Độ linh hoạt | Cao — kiểm soát từng chi tiết | Thấp hơn — phải hiểu auto-config để override đúng |
+
+**Ghi nhớ quan trọng:**
+- Spring Boot không "thông minh" tự nhiên — nó chạy dựa trên `@ConditionalOnClass`, `@ConditionalOnMissingBean`... để quyết định có auto-config bean nào hay không
+- Khi gặp lỗi lạ (bean conflict, auto-config sai thứ tự) → phải hiểu Spring Core (IoC, Bean lifecycle, ApplicationContext) mới debug được tận gốc, không chỉ "thêm annotation là chạy"
+
+---
+
 ## Chạy Bất Kỳ Sub-project
 
 ```bash
