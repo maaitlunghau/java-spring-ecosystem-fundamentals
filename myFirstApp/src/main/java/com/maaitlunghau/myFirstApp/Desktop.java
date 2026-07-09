@@ -14,6 +14,9 @@ import org.springframework.stereotype.Component;
 @Primary 
 public class Desktop implements Computer {
     
+    /**
+     * Prints a desktop compilation message.
+     */
     public void compile() {
         System.out.println("Compiling with 404 bugs by Desktop.");
     }
