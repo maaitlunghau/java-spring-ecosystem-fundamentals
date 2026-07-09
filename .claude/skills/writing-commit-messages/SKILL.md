@@ -1,13 +1,13 @@
 ---
 name: writing-commit-messages
-description: Use when creating a git commit in this project - covers checking repo history before committing, conventional commit message format enforced by commitlint, and what to never include
+description: Use when creating a git commit in this project - covers checking repo history before committing, conventional commit message format enforced by commit-msg hook, and what to never include
 ---
 
 # Writing Commit Messages
 
 ## Overview
 
-Commits in this project are linted by commitlint (conventional commits). Messages must be short, single-line, and follow the type(scope) format. Never add co-author trailers.
+Commits in this project are validated by a Husky `commit-msg` hook (bash regex). Messages must be short, single-line, and follow the type(scope) format. Never add co-author trailers.
 
 ## Before Committing — Always
 

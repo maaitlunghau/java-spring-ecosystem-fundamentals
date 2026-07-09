@@ -1,0 +1,30 @@
+# Node / Husky tooling
+node_modules/
+package-lock.json
+npm-debug.log*
+
+# Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Spring Boot
+*.log
+spring.log
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.DS_Store
+
+# Environment
+.env
+.env.local
+
+# OS
+Thumbs.db
