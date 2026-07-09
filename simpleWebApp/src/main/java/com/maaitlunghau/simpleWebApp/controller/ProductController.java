@@ -23,17 +23,33 @@ public class ProductController {
     ProductService productService;
 
     // @RequestMapping(value = "/products", method = RequestMethod.GET): cách cũ
-    // @RequestMapping("/products") // catch all method for this URL
+    /**
+     * Retrieves all products.
+     *
+     * @return the list of products
+     */
     @GetMapping("/products")
     public List<Product> getProducts() {
         return productService.getProducts();
     }
 
+    /**
+     * Retrieves a product by its identifier.
+     *
+     * @param productId the product identifier from the request path
+     * @return the product with the specified identifier
+     */
     @GetMapping("/products/{productId}")
     public Product getProductById(@PathVariable int productId) {
         return productService.getProductById(productId);
     }   
 
+    /**
+     * Creates a product from the request body.
+     *
+     * @param  pro  the product to add
+     * @return      "Created successfully"
+     */
     @PostMapping("/products")
     public String addProduct(@RequestBody Product pro) { 
         // @RequestBody:  
@@ -42,12 +58,23 @@ public class ProductController {
         return "Created successfully";
     }
 
+    /**
+     * Updates a product.
+     *
+     * @param  pro  the product data to update
+     * @return      "Updated successfully"
+     */
     @PutMapping("/products")
     public String updateProduct(@RequestBody Product pro) {
         productService.updateProduct(pro);
         return "Updated successfully";
     }
 
+    /**
+     * Deletes the product with the specified identifier.
+     *
+     * @param productId the identifier of the product to delete
+     */
     @DeleteMapping("/products/{productId}") 
     public void deleteProduct(@PathVariable int productId) {
         productService.deleteProduct(productId);
