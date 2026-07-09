@@ -1,5 +1,6 @@
 package com.maaitlunghau.myFirstApp;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -18,7 +19,28 @@ import org.springframework.stereotype.Component;
 @Component 
 public class Dev {
 
+    // No IoC
+    // Macbook mac = new Macbook();
+
+    // field injection
+    @Autowired
+    private Macbook mac;
+
+    // setter injection
+    // private Macbook mac;
+
+    // @Autowired
+    // public void setMacbook(Macbook mac) {
+    //     this.mac = mac;
+    // }
+    
+    // constructor injection
+    // public Dev(Macbook mac) {
+    //     this.mac = mac;
+    // }
+
     public void build() {
         System.out.println("DEV: Building the application...");
+        mac.compile();
     }
 }
