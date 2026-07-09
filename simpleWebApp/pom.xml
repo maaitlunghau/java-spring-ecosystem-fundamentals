@@ -30,29 +30,60 @@
 		<java.version>21</java.version>
 	</properties>
 	<dependencies>
+		<!-- Spring Boot Web MVC -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
 		</dependency>
 
+		<!-- Spring Boot DevTools -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-devtools</artifactId>
 			<scope>runtime</scope>
 			<optional>true</optional>
 		</dependency>
+
+		<!-- Spring Boot Test -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+
+		<!-- Lombok -->
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<optional>true</optional>
+    	</dependency>
 	</dependencies>
 
 	<build>
 		<plugins>
 			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<configuration>
+					<annotationProcessorPaths>
+						<path>
+							<groupId>org.projectlombok</groupId>
+							<artifactId>lombok</artifactId>
+						</path>
+					</annotationProcessorPaths>
+				</configuration>
+			</plugin>
+			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<excludes>
+						<exclude>
+							<groupId>org.projectlombok</groupId>
+							<artifactId>lombok</artifactId>
+						</exclude>
+					</excludes>
+				</configuration>
 			</plugin>
 		</plugins>
 	</build>
