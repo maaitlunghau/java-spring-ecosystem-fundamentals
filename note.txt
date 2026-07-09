@@ -108,3 +108,19 @@ Dependency Injection
 + Constructor Injection chiếm 95% code đã sử dụng.
 + Field injection (@Autowired) thấy nhiều trong tutorial vì viết ngắn, nhưng production code tránh dùng. 
 + Setter injection càng hiếm hơn — chỉ dùng khi dependency là optional (có thể không có cũng được).
+
+
+
+-------------------------------
+Luồng hoạt động của Ioc (myFirstApp)
+-------------------------------
+sequenceDiagram
+  participant MyFirstAppApplication
+  participant ApplicationContext
+  participant Dev
+  participant Macbook
+  MyFirstAppApplication->>ApplicationContext: SpringApplication.run(...)
+  MyFirstAppApplication->>ApplicationContext: getBean(Dev.class)
+  ApplicationContext-->>MyFirstAppApplication: Dev bean
+  MyFirstAppApplication->>Dev: build()
+  Dev->>Macbook: compile()
