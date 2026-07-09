@@ -62,3 +62,49 @@ JVM (Java Virtual Machine)
 │           Hệ điều hành              |
 |       (Windows/Linux/macOS...)      │
 └─────────────────────────────────────┘
+
+
+-------------------------------
+Auto Wire (@Autowired / Autowiring)
+-------------------------------
+
+
+
+---------------------------------------------
+II. Notes 
+---------------------------------------------
+
+-------------------------------
+Dependency Injection
+-------------------------------
+- có 3 loại chính:
++ Field Injection (using annotation @Autowired)
++ Setter Injection (using annotation @Autowired)
++ Constructor Injection (using Constructor)
+
+- So sánh 3 cách
+┌────────────────────┬────────────────────────┬──────────────────┬─────────────────────────┐
+│                    │         Field          │      Setter      │       Constructor       │
+├────────────────────┼────────────────────────┼──────────────────┼─────────────────────────┤
+│ @Autowired cần     │ Bắt buộc               │ Bắt buộc         │ Không cần               │
+│ thiết              │                        │                  │                         │
+├────────────────────┼────────────────────────┼──────────────────┼─────────────────────────┤
+│ Dependency sẵn     │ Sau khi tạo object     │ Sau khi tạo      │ Ngay khi tạo object     │
+│ sàng               │                        │ object           │                         │
+├────────────────────┼────────────────────────┼──────────────────┼─────────────────────────┤
+│ Có thể null?       │ Có (nếu quên           │ Có               │ Không — compile sẽ bắt  │
+│                    │ @Autowired)            │                  │ lỗi                     │
+├────────────────────┼────────────────────────┼──────────────────┼─────────────────────────┤
+│ Dễ test?           │ Khó                    │ Trung bình       │ Dễ nhất                 │
+├────────────────────┼────────────────────────┼──────────────────┼─────────────────────────┤
+│ Khuyến nghị        │ Tránh                  │ Hiếm dùng        │ Dùng cái này            │
+└────────────────────┴────────────────────────┴──────────────────┴─────────────────────────┘
+
+- khuyến nghị nên dùng cách Constructor Injection hơn, vì:
++ dependency không thể null, compile sẽ bắt lỗi ngay lập tức
++ object luôn ở trạng thái hợp lệ ngay khi được khởi tạo (coding-standards.md yêu cầu dùng)
+
+- Trong thực tế đi làm:
++ Constructor Injection chiếm 95% code đã sử dụng.
++ Field injection (@Autowired) thấy nhiều trong tutorial vì viết ngắn, nhưng production code tránh dùng. 
++ Setter injection càng hiếm hơn — chỉ dùng khi dependency là optional (có thể không có cũng được).
