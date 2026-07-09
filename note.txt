@@ -1,20 +1,110 @@
-------------------------------------------
-Java Spring - Spring Boot 
-------------------------------------------
+------------------------------------------------------------------------------------
+                            Java Spring - Spring Boot 
+------------------------------------------------------------------------------------
 - test .husky (Git Hook)
 
----------------------------
-Important Concept
----------------------------
-- IoC: Inversion of Control (Sự đảo ngược điều khiển)
-+ Đảo ngược quyền kiểm soát trong việc tạo và quản lý vòng đời của các Object/Dependency
-+ IoC là khái niệm rộng hơn DI
 
-- DI: Dependency Injection
-+ DI là cách phổ biến nhất (và gần như duy nhất) mà Spring dùng để hiện thực IoC
 
-- CoC: Convension over Configuration (Quy ước hơn cấu hình)
-+ mặc định thông minh, config chỉ khi cần override
-+ trước Spring Boot, Spring core yêu cầu bạn khai báo tường minh gần như mọi thứ qua XML hoặc Java Config
-+ hiện tại, Spring Boot tự đặt sẵn các mặc định hợp lý, để bạn không cần config thủ công — chỉ khi nào muốn khác đi thì mới cần khai báo
--> Không config thì dùng mặc định của Spring, muốn khác thì tự ghi đè.
+---------------------------------------------
+I. Important Concept
+---------------------------------------------
+
+-------------------------------
+IoC (Inversion of Control)
+-------------------------------
+- sự đảo ngược điều khiển
+- đảo ngược quyền kiểm soát trong việc tạo và quản lý vòng đời của các Object/Dependency
+- IoC là khái niệm rộng hơn DI
+- là một cơ chế ở tầng ứng dụng (application layer), do Spring framework cung cấp
+— nó chạy bên trong một chương trình Java đang chạy trên JVM, chịu trách nhiệm tạo, quản lý bean/object và dependency giữa chúng.
+
+
+-------------------------------
+DI (Dependency Injection)
+-------------------------------
+- DI là cách phổ biến nhất (và gần như duy nhất) mà Spring dùng để hiện thực IoC
+
+
+-------------------------------
+CoC (Convension over Configuration)
+-------------------------------
+- quy ước hơn cấu hình
+- mặc định thông minh, config chỉ khi cần override
+- Không config thì dùng mặc định của Spring, muốn khác thì tự ghi đè.
+- trước Spring Boot, Spring core yêu cầu bạn khai báo tường minh gần như mọi thứ qua XML hoặc Java Config
+- hiện tại, Spring Boot tự đặt sẵn các mặc định hợp lý, để bạn không cần config thủ công — chỉ khi nào muốn khác đi thì mới cần khai báo
+
+
+-------------------------------
+JVM (Java Virtual Machine)
+-------------------------------
+- máy ảo chạy code Java
+- nó thực thi code Java (.java), sau đó compile ra bytecode (.class) rồi thực thi trên máy thật (Windows/Linux/macOS...)
+- đồng thời tự lo luôn việc quản lý bộ nhớ (cấp phát, dọn rác — Garbage Collector).
+- nhờ có JVM, code Java compile 1 lần chạy được ở mọi hệ điều hành — miễn máy đó có cài JVM (Write Once, Run Anywhere)
+- có thể nói rằng: "IoC Container là một object chạy trong JVM"
+
+┌─────────────────────────────────────┐
+│  Spring Application (code của bạn)  │
+│  ┌─────────────────────────────┐    │
+│  │       IoC Container         │    │  ← tầng ứng dụng
+│  │   (quản lý bean, DI...)     │    │     Spring tạo ra
+│  └─────────────────────────────┘    │
+└─────────────────────────────────────┘
+              chạy TRÊN
+┌─────────────────────────────────────┐
+│              JVM                    │  ← tầng runtime
+│  (Heap, Stack, Garbage Collector,   │     bất kỳ chương trình
+│   Class Loader, Bytecode Execution) │     Java nào cũng cần
+└─────────────────────────────────────┘
+              chạy TRÊN
+┌─────────────────────────────────────┐
+│           Hệ điều hành              |
+|       (Windows/Linux/macOS...)      │
+└─────────────────────────────────────┘
+
+
+-------------------------------
+Auto Wire (@Autowired / Autowiring)
+-------------------------------
+
+
+
+---------------------------------------------
+II. Notes 
+---------------------------------------------
+
+-------------------------------
+Dependency Injection
+-------------------------------
+- có 3 loại chính:
++ Field Injection (using annotation @Autowired)
++ Setter Injection (using annotation @Autowired)
++ Constructor Injection (using Constructor)
+
+- So sánh 3 cách
+┌────────────────────┬────────────────────────┬──────────────────┬─────────────────────────┐
+│                    │         Field          │      Setter      │       Constructor       │
+├────────────────────┼────────────────────────┼──────────────────┼─────────────────────────┤
+│ @Autowired cần     │ Bắt buộc               │ Bắt buộc         │ Không cần               │
+│ thiết              │                        │                  │                         │
+├────────────────────┼────────────────────────┼──────────────────┼─────────────────────────┤
+│ Dependency sẵn     │ Sau khi tạo object     │ Sau khi tạo      │ Ngay khi tạo object     │
+│ sàng               │                        │ object           │                         │
+├────────────────────┼────────────────────────┼──────────────────┼─────────────────────────┤
+│ Có thể null?       │ Có (nếu quên           │ Có               │ Không — compile sẽ bắt  │
+│                    │ @Autowired)            │                  │ lỗi                     │
+├────────────────────┼────────────────────────┼──────────────────┼─────────────────────────┤
+│ Dễ test?           │ Khó                    │ Trung bình       │ Dễ nhất                 │
+├────────────────────┼────────────────────────┼──────────────────┼─────────────────────────┤
+│ Khuyến nghị        │ Tránh                  │ Hiếm dùng        │ Dùng cái này            │
+└────────────────────┴────────────────────────┴──────────────────┴─────────────────────────┘
+
+- khuyến nghị nên dùng cách Constructor Injection hơn, vì:
++ dependency không thể null, compile sẽ bắt lỗi ngay lập tức
++ object luôn ở trạng thái hợp lệ ngay khi được khởi tạo (coding-standards.md yêu cầu dùng)
+
+- Trong thực tế đi làm:
++ Constructor Injection chiếm 95% code đã sử dụng.
++ Field injection (@Autowired) thấy nhiều trong tutorial vì viết ngắn, nhưng production code tránh dùng. 
++ Setter injection càng hiếm hơn — chỉ dùng khi dependency là optional (có thể không có cũng được).
