@@ -2,3 +2,19 @@
 Java Spring - Spring Boot 
 ------------------------------------------
 - test .husky (Git Hook)
+
+---------------------------
+Important Concept
+---------------------------
+- IoC: Inversion of Control (Sự đảo ngược điều khiển)
++ Đảo ngược quyền kiểm soát trong việc tạo và quản lý vòng đời của các Object/Dependency
++ IoC là khái niệm rộng hơn DI
+
+- DI: Dependency Injection
++ DI là cách phổ biến nhất (và gần như duy nhất) mà Spring dùng để hiện thực IoC
+
+- CoC: Convension over Configuration (Quy ước hơn cấu hình)
++ mặc định thông minh, config chỉ khi cần override
++ trước Spring Boot, Spring core yêu cầu bạn khai báo tường minh gần như mọi thứ qua XML hoặc Java Config
++ hiện tại, Spring Boot tự đặt sẵn các mặc định hợp lý, để bạn không cần config thủ công — chỉ khi nào muốn khác đi thì mới cần khai báo
+-> Không config thì dùng mặc định của Spring, muốn khác thì tự ghi đè.
