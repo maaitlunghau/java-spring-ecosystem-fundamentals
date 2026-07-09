@@ -127,16 +127,20 @@ private Computer comp;
 
 #### Luồng hoạt động IoC
 
-```
-SpringApplication.run()
-    ├── Khởi động IoC Container
-    ├── Quét package, tìm @Component
-    ├── Tạo Bean và lưu vào Container
-    └── Inject dependency giữa các Bean
-          ↓
-context.getBean(Dev.class)  →  Dev đã có sẵn Macbook/Desktop được inject
-          ↓
-dev.build()  →  comp.compile()
+```mermaid
+sequenceDiagram
+    participant Main as MyFirstAppApplication
+    participant Ctx as ApplicationContext (IoC Container)
+    participant Dev as Dev Bean
+    participant Mac as Macbook Bean
+
+    Main->>Ctx: SpringApplication.run(...)
+    Note over Ctx: Quét @Component, tạo Bean,<br/>inject dependency
+    Main->>Ctx: getBean(Dev.class)
+    Ctx-->>Main: Dev bean (đã có Macbook được inject sẵn)
+    Main->>Dev: build()
+    Dev->>Mac: compile()
+    Mac-->>Dev: "Compiling with 404 bugs by Macbook."
 ```
 
 **Chạy:**
