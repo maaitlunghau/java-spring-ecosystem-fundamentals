@@ -3,9 +3,9 @@ package com.maaitlunghau.myFirstApp;
 import org.springframework.stereotype.Component;
 
 @Component
-public class Macbook {
+public class Macbook implements Computer {
     
     public void compile() {
-        System.out.println("Compiling with 404 bugs");
+        System.out.println("Compiling with 404 bugs by Macbook.");
     }
 }   

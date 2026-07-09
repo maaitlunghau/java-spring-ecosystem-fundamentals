@@ -24,7 +24,7 @@ public class Dev {
 
     // field injection
     @Autowired
-    private Macbook mac;
+    private Computer comp;
 
     // setter injection
     // private Macbook mac;
@@ -41,6 +41,6 @@ public class Dev {
 
     public void build() {
         System.out.println("DEV: Building the application...");
-        mac.compile();
+        comp.compile();
     }
 }
