@@ -1,9 +1,11 @@
 package com.maaitlunghau.__rest_api_jpa_mysql.exception;
 
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -25,6 +27,23 @@ public class GlobalExceptionHandler {
                 .body(Map.of(
                         "status", 404,
                         "message", ex.getMessage()
+                ));
+    }
+
+    // Bắt lỗi validation từ @Valid — khi request body vi phạm constraint (@NotBlank, @Min...).
+    // Gom tất cả field errors thành một message duy nhất, trả 400 Bad Request.
+    // (Handles @Valid failures: collects all field errors into one message, returns 400)
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
+        String errors = ex.getBindingResult().getFieldErrors()
+                .stream()
+                .map(e -> e.getField() + ": " + e.getDefaultMessage())
+                .collect(Collectors.joining(", "));
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(Map.of(
+                        "status", 400,
+                        "message", errors
                 ));
     }
 
