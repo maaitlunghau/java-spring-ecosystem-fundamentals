@@ -19,16 +19,20 @@ Repo học và luyện tập **Java Spring Framework + Spring Boot** theo kiểu
 
 ```
 java-spring-boot-fundamentals/
-├── DemoApp/          # Spring MVC — REST Controller cơ bản
-├── myFirstApp/       # Spring Core — IoC, DI, Bean lifecycle
-└── ...               # Sub-project mới thêm theo tiến độ
+├── docs/
+│   └── notes-raw.txt         # Ghi chú học tập thô
+├── projects/
+│   ├── 01-rest-controller/   # Spring MVC — @RestController, HTTP mappings
+│   ├── 02-ioc-and-di/        # Spring Core — IoC Container, Dependency Injection
+│   └── 03-crud-rest-api/     # Spring MVC + JPA — CRUD REST API, layered architecture
+└── README.md
 ```
 
 ---
 
 ## Sub-projects
 
-### 01 · DemoApp — Spring MVC & REST Controller
+### 01 · rest-controller — Spring MVC & REST Controller
 
 **Mục tiêu:** Hiểu cách Spring Boot xử lý HTTP request, sự khác biệt giữa `@Controller` và `@RestController`, và các HTTP mapping annotation.
 
@@ -40,14 +44,14 @@ java-spring-boot-fundamentals/
 
 **Chạy:**
 ```bash
-cd DemoApp
+cd projects/01-rest-controller
 ./mvnw spring-boot:run
 # Truy cập: http://localhost:8081
 ```
 
 ---
 
-### 02 · myFirstApp — Spring Core: IoC & Dependency Injection
+### 02 · ioc-and-di — Spring Core: IoC & Dependency Injection
 
 **Mục tiêu:** Nắm vững cơ chế IoC Container, 3 loại Dependency Injection, Loose Coupling qua Interface, và cách Spring resolve Bean khi có conflict.
 
@@ -145,8 +149,40 @@ sequenceDiagram
 
 **Chạy:**
 ```bash
-cd myFirstApp
+cd projects/02-ioc-and-di
 ./mvnw spring-boot:run
+```
+
+---
+
+### 03 · crud-rest-api — Spring MVC + Spring Data JPA
+
+**Mục tiêu:** Xây dựng REST API CRUD hoàn chỉnh với layered architecture, Spring Data JPA và H2 in-memory database.
+
+**Concepts đã học:**
+- Layered architecture: `@RestController` → `@Service` → `@Repository`
+- Spring Data JPA — `JpaRepository` tự generate các CRUD method
+- `@Entity`, `@Id`, `@GeneratedValue` — JPA entity mapping
+- H2 in-memory database — dev/learning không cần cài DB
+- `@RequestBody`, `@PathVariable` — extract data từ HTTP request
+- Lombok `@Data`, `@AllArgsConstructor`, `@NoArgsConstructor` — giảm boilerplate
+
+**Endpoints:**
+
+| Method | URL | Mô tả |
+|---|---|---|
+| GET | `/products` | Lấy danh sách tất cả product |
+| GET | `/products/{id}` | Lấy product theo ID |
+| POST | `/products` | Tạo product mới |
+| PUT | `/products` | Cập nhật product |
+| DELETE | `/products/{id}` | Xóa product theo ID |
+
+**Chạy:**
+```bash
+cd projects/03-crud-rest-api
+./mvnw spring-boot:run
+# API:       http://localhost:8081/products
+# H2 Console: http://localhost:8081/h2-console  (JDBC URL: jdbc:h2:mem:maaitlunghau, User: sa)
 ```
 
 ---
@@ -209,7 +245,7 @@ Spring Boot áp dụng nguyên tắc "quy ước hơn cấu hình" — không co
 ## Chạy Bất Kỳ Sub-project
 
 ```bash
-cd [tên-sub-project]
+cd projects/[tên-sub-project]
 
 ./mvnw spring-boot:run          # Chạy app
 ./mvnw test                     # Chạy tất cả tests
@@ -221,22 +257,23 @@ cd [tên-sub-project]
 
 ## Git Conventions
 
-Branch theo chủ đề: `feature/my-first-app`, `feature/spring-data-jpa`...
+Branch theo chủ đề: `feature/rest-controller`, `feature/ioc-and-di`...
 
 Commit message theo [Conventional Commits](https://www.conventionalcommits.org/) — được enforce bởi Husky `commit-msg` hook:
 
 ```
-feat(myfirstapp): add Dev bean and demo ioc with getbean
-refactor(myfirstapp): introduce Computer interface for loose coupling
-docs: expand notes on IoC and DI concepts
+feat(crud-rest-api): add delete product endpoint
+chore(ioc-and-di): configure qualifier for macbook bean
+docs: update readme with new project structure
 ```
 
 ---
 
 ## Roadmap
 
-- [x] Spring MVC — REST Controller cơ bản
-- [x] Spring Core — IoC Container, DI, Bean lifecycle, Loose Coupling
-- [ ] Spring Data JPA — Repository pattern, Entity mapping, JPQL
+- [x] Spring MVC — REST Controller cơ bản (`01-rest-controller`)
+- [x] Spring Core — IoC Container, DI, Bean lifecycle, Loose Coupling (`02-ioc-and-di`)
+- [x] Spring MVC + JPA — CRUD REST API, layered architecture (`03-crud-rest-api`)
+- [ ] Spring Data JPA — Relationships, JPQL, custom queries, pagination
 - [ ] Spring Security — Authentication, Authorization, JWT
 - [ ] Spring Boot Testing — JUnit 5, Mockito, `@SpringBootTest`
