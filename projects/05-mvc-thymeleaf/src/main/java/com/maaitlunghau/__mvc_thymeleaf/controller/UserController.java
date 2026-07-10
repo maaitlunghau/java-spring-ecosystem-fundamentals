@@ -90,7 +90,13 @@ public class UserController {
             model.addAttribute("userId", id);
             return "users/edit";
         }
-        userService.updateUser(id, updateUserRequest);
+        try {
+            userService.updateUser(id, updateUserRequest);
+        } catch (IllegalArgumentException ex) {
+            model.addAttribute("errorMessage", ex.getMessage());
+            model.addAttribute("userId", id);
+            return "users/edit";
+        }
         return "redirect:/users";
     }
 

@@ -74,10 +74,13 @@ public class UserService {
         user.setEmail(request.email());
         user.setAge(request.age());
 
-        // Nếu password mới không trống thì hash và update, ngược lại giữ nguyên password cũ.
-        // StringUtils.hasText() kiểm tra không null và không blank.
-        // (Only re-hash and update password if a new one was provided)
+        // Nếu password mới không trống thì validate độ dài rồi hash và update.
+        // Validate ở đây thay vì DTO vì @Size(min=6) không phân biệt được empty string với missing value.
+        // (Validate length here, not in DTO: @Size can't distinguish intentional blank from missing value)
         if (StringUtils.hasText(request.password())) {
+            if (request.password().length() < 6) {
+                throw new IllegalArgumentException("New password must be at least 6 characters");
+            }
             user.setPassword(passwordEncoder.encode(request.password()));
         }
         // Không cần gọi save() — Hibernate dirty checking tự detect thay đổi và flush khi commit.
