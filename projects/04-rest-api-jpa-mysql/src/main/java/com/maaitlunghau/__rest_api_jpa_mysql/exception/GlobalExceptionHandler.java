@@ -62,15 +62,21 @@ public class GlobalExceptionHandler {
     }
 
     // Fallback — bắt tất cả exception không được handle ở trên.
-    // Trả 500 Internal Server Error thay vì để lộ stack trace ra client.
-    // (Catch-all fallback: returns 500 instead of exposing stack trace to client)
+    // Tách làm 2 field: message ngắn gọn cố định, detail hiển thị tên exception + message gốc.
+    // Không expose stack trace (quá dài, lộ cấu trúc nội bộ) — chỉ lấy class name + message là đủ debug.
+    // Lưu ý: production thật sự nên bỏ field detail, chỉ dùng trong môi trường dev/learning.
+    // (Split into message + detail: class name + root message is enough to debug without exposing stack trace)
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneral(Exception ex) {
+        String detail = ex.getClass().getSimpleName()
+                + ": "
+                + (ex.getMessage() != null ? ex.getMessage() : "no message");
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of(
                         "status", 500,
-                        "message", "Internal server error"
+                        "message", "Internal server error",
+                        "detail", detail
                 ));
     }
 }
