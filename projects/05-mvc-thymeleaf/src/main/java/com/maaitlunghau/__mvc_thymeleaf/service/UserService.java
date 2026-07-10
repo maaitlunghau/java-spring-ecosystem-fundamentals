@@ -39,8 +39,6 @@ public class UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("User", id));
     }
 
-    // Trả về raw User entity để controller có thể bind vào form update.
-    // (Returns entity for form binding in update view)
     public User getUserEntityById(Long id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User", id));
@@ -55,10 +53,6 @@ public class UserService {
             throw new IllegalArgumentException("Email already exists: " + request.email());
         }
 
-        // Hash password trước khi lưu — không bao giờ lưu plain text vào DB.
-        // passwordEncoder.encode() tự tạo random salt và nhúng vào trong chuỗi hash,
-        // nên cùng một password sẽ ra hash khác nhau mỗi lần — an toàn hơn.
-        // (Hash before saving: BCrypt auto-generates and embeds salt, same password → different hash each time)
         String hashedPassword = passwordEncoder.encode(request.password());
 
         User user = new User(request.username(), request.email(), hashedPassword, request.age());
@@ -74,17 +68,12 @@ public class UserService {
         user.setEmail(request.email());
         user.setAge(request.age());
 
-        // Nếu password mới không trống thì validate độ dài rồi hash và update.
-        // Validate ở đây thay vì DTO vì @Size(min=6) không phân biệt được empty string với missing value.
-        // (Validate length here, not in DTO: @Size can't distinguish intentional blank from missing value)
         if (StringUtils.hasText(request.password())) {
             if (request.password().length() < 6) {
                 throw new IllegalArgumentException("New password must be at least 6 characters");
             }
             user.setPassword(passwordEncoder.encode(request.password()));
         }
-        // Không cần gọi save() — Hibernate dirty checking tự detect thay đổi và flush khi commit.
-        // (No explicit save(): Hibernate dirty checking handles flush on transaction commit)
     }
 
     @Transactional

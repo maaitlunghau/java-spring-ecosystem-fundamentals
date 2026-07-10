@@ -6,9 +6,6 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-// DTO nhận từ form Thymeleaf khi tạo user mới — không có id (DB generate).
-// Validation đặt ở đây, không phải trên Entity.
-// (Create DTO: form data for new user, no id field, validation lives here)
 public record CreateUserRequest(
 
         @NotBlank(message = "Username is required")
@@ -19,8 +16,6 @@ public record CreateUserRequest(
         @Email(message = "Invalid email format")
         String email,
 
-        // minLength = 6 để đảm bảo password không quá ngắn trước khi hash.
-        // (Minimum length check before hashing — BCrypt works on any length but short passwords are weak)
         @NotBlank(message = "Password is required")
         @Size(min = 6, message = "Password must be at least 6 characters")
         String password,
