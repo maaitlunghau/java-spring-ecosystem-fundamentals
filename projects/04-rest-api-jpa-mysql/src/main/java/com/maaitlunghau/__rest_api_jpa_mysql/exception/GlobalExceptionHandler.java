@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 // @RestControllerAdvice — interceptor toàn cục, bắt exception từ tất cả @RestController
 // trong app mà không cần try-catch trong từng controller.
@@ -44,6 +45,19 @@ public class GlobalExceptionHandler {
                 .body(Map.of(
                         "status", 400,
                         "message", errors
+                ));
+    }
+
+    // Bắt lỗi khi gọi URL không tồn tại trong app — Spring throw NoResourceFoundException
+    // nhưng fallback handler bên dưới sẽ bắt nhầm thành 500 nếu không xử lý riêng.
+    // (Handles unknown URL paths: returns 404 instead of letting it fall to the 500 handler)
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNoResource(NoResourceFoundException ex) {
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(Map.of(
+                        "status", 404,
+                        "message", ex.getMessage()
                 ));
     }
 
