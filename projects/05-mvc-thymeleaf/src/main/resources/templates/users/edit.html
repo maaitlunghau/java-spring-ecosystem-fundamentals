@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit User</title>
+    <style>
+        body { font-family: sans-serif; max-width: 500px; margin: 40px auto; padding: 0 20px; }
+        .form-group { margin-bottom: 16px; }
+        label { display: block; margin-bottom: 4px; font-weight: 500; }
+        input { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .error { color: #ef4444; font-size: 13px; margin-top: 4px; }
+        .hint { color: #6b7280; font-size: 12px; margin-top: 4px; }
+        .btn { padding: 8px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-secondary { background: #e5e7eb; color: #374151; text-decoration: none; padding: 8px 20px; border-radius: 4px; }
+        .actions { display: flex; gap: 10px; margin-top: 8px; }
+    </style>
+</head>
+<body>
+
+<h1>Edit User</h1>
+
+<form th:action="@{/users/{id}/edit(id=${userId})}" th:object="${updateUserRequest}" method="post">
+
+    <div class="form-group">
+        <label>Username</label>
+        <input type="text" th:field="*{username}">
+        <span class="error" th:if="${#fields.hasErrors('username')}" th:errors="*{username}"></span>
+    </div>
+
+    <div class="form-group">
+        <label>Email</label>
+        <input type="email" th:field="*{email}">
+        <span class="error" th:if="${#fields.hasErrors('email')}" th:errors="*{email}"></span>
+    </div>
+
+    <div class="form-group">
+        <label>New Password</label>
+        <input type="password" th:field="*{password}" placeholder="Leave blank to keep current password">
+        <!-- Gợi ý để trống nếu không muốn đổi password -->
+        <span class="hint">Leave blank to keep your current password</span>
+        <span class="error" th:if="${#fields.hasErrors('password')}" th:errors="*{password}"></span>
+    </div>
+
+    <div class="form-group">
+        <label>Age</label>
+        <input type="number" th:field="*{age}">
+        <span class="error" th:if="${#fields.hasErrors('age')}" th:errors="*{age}"></span>
+    </div>
+
+    <div class="actions">
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+        <a href="/users" class="btn-secondary">Cancel</a>
+    </div>
+
+</form>
+
+</body>
+</html>
