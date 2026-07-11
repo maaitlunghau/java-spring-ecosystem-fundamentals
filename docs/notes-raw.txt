@@ -2,7 +2,7 @@
                             Java Spring - Spring Boot 
 ------------------------------------------------------------------------------------
 - test .husky (Git Hook)
-
+- nguồn học 06-spring-security-jwt: https://www.youtube.com/watch?v=RnZmeczS_DI&t=2s (Youtube)
 
 
 ---------------------------------------------
