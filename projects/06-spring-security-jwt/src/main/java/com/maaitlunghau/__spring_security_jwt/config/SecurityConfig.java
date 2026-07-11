@@ -14,8 +14,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 import com.maaitlunghau.__spring_security_jwt.filter.JwtAuthenticationFilter;
 import com.maaitlunghau.__spring_security_jwt.service.UserDetailsServiceImpl;
-import com.maaitlunghau.__spring_security_jwt.config.CustomAuthenticationEntryPoint;
-import com.maaitlunghau.__spring_security_jwt.config.CustomAccessDeniedHandler;
 
 @Configuration
 public class SecurityConfig {
