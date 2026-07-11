@@ -20,11 +20,14 @@ Repo học và luyện tập **Java Spring Framework + Spring Boot** theo kiểu
 ```
 java-spring-boot-fundamentals/
 ├── docs/
-│   └── notes-raw.txt         # Ghi chú học tập thô
+│   └── notes-raw.txt                  # Ghi chú học tập thô
 ├── projects/
-│   ├── 01-rest-controller/   # Spring MVC — @RestController, HTTP mappings
-│   ├── 02-ioc-and-di/        # Spring Core — IoC Container, Dependency Injection
-│   └── 03-crud-rest-api/     # Spring MVC + JPA — CRUD REST API, layered architecture
+│   ├── 01-rest-controller/            # Spring MVC — @RestController, HTTP mappings
+│   ├── 02-ioc-and-di/                 # Spring Core — IoC Container, Dependency Injection
+│   ├── 03-crud-rest-api/              # Spring MVC + JPA — CRUD REST API, layered architecture
+│   ├── 04-rest-api-jpa-mysql/         # Spring Data JPA + MySQL
+│   ├── 05-mvc-thymeleaf/              # Spring MVC + Thymeleaf template engine
+│   └── 06-spring-security-jwt/        # Spring Security — JWT Authentication & Authorization
 └── README.md
 ```
 
@@ -187,6 +190,77 @@ cd projects/03-crud-rest-api
 
 ---
 
+### 06 · spring-security-jwt — Spring Security + JWT Authentication
+
+**Mục tiêu:** Xây dựng hệ thống xác thực và phân quyền hoàn chỉnh với Spring Security, JWT stateless authentication, refresh token pattern và Redis-backed token blacklist.
+
+**Concepts đã học:**
+- `UserDetails` / `UserDetailsService` — tích hợp Spring Security với User entity
+- `UsernamePasswordAuthenticationToken` — xác thực credentials qua `AuthenticationManager`
+- `OncePerRequestFilter` — intercept request, validate JWT trước khi vào controller
+- Stateless session (`STATELESS`) — không dùng HTTP Session, mỗi request tự mang token
+- Access token (15 phút) + Refresh token (7 ngày) — pattern phổ biến trong production
+- **Pattern 2 — Redis JTI blacklist:** revoke access token ngay lập tức sau khi logout
+- `@RestControllerAdvice` — xử lý exception tập trung, trả về JSON nhất quán
+- Custom `AuthenticationEntryPoint` (401) và `AccessDeniedHandler` (403)
+- `ApiResponse<T>` wrapper — chuẩn hóa toàn bộ response format
+- Constructor injection, Java Records cho DTO, `@Transactional(readOnly = true)`
+
+**Luồng xác thực:**
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant AuthenticationController
+    participant AuthenticationService
+    participant JwtService
+    participant TokenRepository
+
+    Client->>AuthenticationController: Submit register or login request
+    AuthenticationController->>AuthenticationService: Delegate validated credentials
+    AuthenticationService->>JwtService: Generate access and refresh tokens
+    AuthenticationService->>TokenRepository: Persist refresh token
+    AuthenticationService-->>AuthenticationController: Return AuthenticationResponse
+    AuthenticationController-->>Client: Return ApiResponse
+```
+
+**Endpoints:**
+
+| Method | URL | Auth | Mô tả |
+|---|---|---|---|
+| POST | `/api/auth/register` | Public | Đăng ký tài khoản mới |
+| POST | `/api/auth/login` | Public | Đăng nhập, nhận token |
+| POST | `/api/auth/refresh-token` | Refresh token | Lấy access token mới |
+| POST | `/api/auth/logout` | Access token | Đăng xuất, revoke token |
+| GET | `/admin/greeting` | ADMIN role | Endpoint bảo vệ theo role |
+
+**Response format chuẩn:**
+```json
+{
+  "status": 200,
+  "message": "Login successful",
+  "data": {
+    "accessToken": "eyJ...",
+    "refreshToken": "eyJ..."
+  }
+}
+```
+
+**Chạy:**
+```bash
+cd projects/06-spring-security-jwt
+docker compose up -d        # Start MySQL + Redis + phpMyAdmin
+./mvnw spring-boot:run      # App chạy tại http://localhost:8081
+```
+
+| Service | URL |
+|---|---|
+| API | `http://localhost:8081` |
+| phpMyAdmin | `http://localhost:8080` (root / 112233) |
+| Redis | `localhost:6379` |
+
+---
+
 ## Concepts Tổng Quan
 
 ### JVM — Java Virtual Machine
@@ -274,6 +348,8 @@ docs: update readme with new project structure
 - [x] Spring MVC — REST Controller cơ bản (`01-rest-controller`)
 - [x] Spring Core — IoC Container, DI, Bean lifecycle, Loose Coupling (`02-ioc-and-di`)
 - [x] Spring MVC + JPA — CRUD REST API, layered architecture (`03-crud-rest-api`)
+- [x] Spring Data JPA + MySQL (`04-rest-api-jpa-mysql`)
+- [x] Spring MVC + Thymeleaf (`05-mvc-thymeleaf`)
+- [x] Spring Security — JWT Authentication, Refresh Token, Redis blacklist (`06-spring-security-jwt`)
 - [ ] Spring Data JPA — Relationships, JPQL, custom queries, pagination
-- [ ] Spring Security — Authentication, Authorization, JWT
 - [ ] Spring Boot Testing — JUnit 5, Mockito, `@SpringBootTest`
