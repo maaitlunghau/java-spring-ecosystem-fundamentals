@@ -8,6 +8,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.maaitlunghau.__spring_security_jwt.dto.AuthenticationResponse;
+import com.maaitlunghau.__spring_security_jwt.dto.LoginRequest;
+import com.maaitlunghau.__spring_security_jwt.dto.RegisterRequest;
 import com.maaitlunghau.__spring_security_jwt.model.Token;
 import com.maaitlunghau.__spring_security_jwt.model.User;
 import com.maaitlunghau.__spring_security_jwt.repository.TokenRepository;
@@ -36,17 +38,17 @@ public class AuthenticationService {
         this.authenticationManager = authenticationManager;
     }
 
-    public AuthenticationResponse register(User request) {
-        if (userRepository.existsByUsername(request.getUsername())) {
-            throw new IllegalArgumentException("Username already exists: " + request.getUsername());
+    public AuthenticationResponse register(RegisterRequest request) {
+        if (userRepository.existsByUsername(request.username())) {
+            throw new IllegalArgumentException("Username already exists: " + request.username());
         }
 
         User user = new User(
-            request.getFirstName(),
-            request.getLastName(),
-            request.getUsername(),
-            passwordEncoder.encode(request.getPassword()),
-            request.getRole()
+            request.firstName(),
+            request.lastName(),
+            request.username(),
+            passwordEncoder.encode(request.password()),
+            request.role()
         );
         user = userRepository.save(user);
 
@@ -57,12 +59,12 @@ public class AuthenticationService {
         return new AuthenticationResponse(accessToken, refreshToken);
     }
 
-    public AuthenticationResponse authenticate(User request) {
+    public AuthenticationResponse authenticate(LoginRequest request) {
         authenticationManager.authenticate(
-            new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
+            new UsernamePasswordAuthenticationToken(request.username(), request.password())
         );
 
-        User user = userRepository.findByUsername(request.getUsername()).orElseThrow();
+        User user = userRepository.findByUsername(request.username()).orElseThrow();
         revokeAllUserTokens(user);
 
         String accessToken = jwtService.generateAccessToken(user);
