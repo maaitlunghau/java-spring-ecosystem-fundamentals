@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.maaitlunghau.__spring_security_jwt.service.JwtService;
+import com.maaitlunghau.__spring_security_jwt.service.TokenBlacklist;
 import com.maaitlunghau.__spring_security_jwt.service.UserDetailsServiceImpl;
 
 import io.jsonwebtoken.JwtException;
@@ -24,10 +25,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserDetailsServiceImpl userDetailsServiceImpl;
+    private final TokenBlacklist tokenBlacklist;
 
-    public JwtAuthenticationFilter(JwtService jwtService, UserDetailsServiceImpl userDetailsServiceImpl) {
+    public JwtAuthenticationFilter(JwtService jwtService, UserDetailsServiceImpl userDetailsServiceImpl,
+                                   TokenBlacklist tokenBlacklist) {
         this.jwtService = jwtService;
         this.userDetailsServiceImpl = userDetailsServiceImpl;
+        this.tokenBlacklist = tokenBlacklist;
     }
 
     @Override
@@ -51,7 +55,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = userDetailsServiceImpl.loadUserByUsername(username);
 
-                if (jwtService.isValid(token, userDetails)) {
+                String jti = jwtService.extractJti(token);
+                if (jwtService.isValid(token, userDetails) && !tokenBlacklist.isBlacklisted(jti)) {
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                         userDetails, null, userDetails.getAuthorities()
                     );
