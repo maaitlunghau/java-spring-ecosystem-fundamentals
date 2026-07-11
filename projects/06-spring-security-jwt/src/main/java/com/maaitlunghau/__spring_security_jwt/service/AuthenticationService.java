@@ -37,6 +37,10 @@ public class AuthenticationService {
     }
 
     public AuthenticationResponse register(User request) {
+        if (userRepository.existsByUsername(request.getUsername())) {
+            throw new IllegalArgumentException("Username already exists: " + request.getUsername());
+        }
+
         User user = new User(
             request.getFirstName(),
             request.getLastName(),
