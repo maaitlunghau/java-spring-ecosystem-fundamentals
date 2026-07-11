@@ -224,6 +224,61 @@ sequenceDiagram
     AuthenticationController-->>Client: Return ApiResponse
 ```
 
+**Luồng chi tiết — Login / Refresh / Logout / Authenticated request:**
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant F as JwtAuthenticationFilter
+    participant AC as AuthController
+    participant AS as AuthService
+    participant JS as JwtService
+    participant DB as TokenRepository (MySQL)
+    participant RD as TokenBlacklist (Redis)
+
+    Note over C,DB: LOGIN
+    C->>AC: POST /api/auth/login {username, password}
+    AC->>AS: authenticate(LoginRequest)
+    AS->>AS: AuthenticationManager.authenticate(...)
+    AS->>DB: revokeAllUserTokens — set isLoggedOut = true
+    AS->>JS: generateAccessToken(user) — embed jti (UUID)
+    AS->>JS: generateRefreshToken(user)
+    AS->>DB: save new refresh token
+    AC-->>C: 200 { accessToken (15m), refreshToken (7d) }
+
+    Note over C,RD: AUTHENTICATED REQUEST
+    C->>F: GET /admin/greeting — Authorization: Bearer accessToken
+    F->>JS: extractUsername(token)
+    F->>JS: extractJti(token)
+    F->>RD: isBlacklisted(jti)?
+    RD-->>F: false — not revoked
+    F->>JS: isValid(token, userDetails) — check signature + expiry
+    JS-->>F: true
+    F-->>AC: proceed — SecurityContext set with authorities
+    AC-->>C: 200 OK
+
+    Note over C,RD: REFRESH TOKEN
+    C->>AC: POST /api/auth/refresh-token — Authorization: Bearer refreshToken
+    AC->>AS: refreshToken(refreshToken)
+    AS->>JS: extractUsername(refreshToken)
+    AS->>DB: findByToken — isLoggedOut = false?
+    DB-->>AS: valid
+    AS->>JS: isValid(refreshToken, user)
+    JS-->>AS: true
+    AS->>JS: generateAccessToken(user) — new jti
+    AC-->>C: 200 { accessToken mới, refreshToken cũ }
+
+    Note over C,RD: LOGOUT
+    C->>AC: POST /api/auth/logout — Authorization: Bearer accessToken
+    AC->>AS: logout(accessToken)
+    AS->>JS: extractJti(accessToken)
+    AS->>JS: extractRemainingTtl(accessToken)
+    AS->>RD: blacklist(jti, remainingTtl) — TTL tự hết khi token expire
+    AS->>DB: revokeAllUserTokens — set isLoggedOut = true
+    AC-->>C: 200 Logged out successfully
+    Note over C,RD: Dùng lại accessToken cũ → Filter thấy jti trong Redis → 401
+```
+
 **Endpoints:**
 
 | Method | URL | Auth | Mô tả |
