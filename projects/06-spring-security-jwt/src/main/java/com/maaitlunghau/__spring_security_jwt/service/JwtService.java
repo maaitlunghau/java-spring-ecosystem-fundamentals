@@ -20,6 +20,12 @@ public class JwtService {
     @Value("${jwt.secret-key}")
     private String SECRET_KEY;
 
+    @Value("${jwt.access-token-expiration}")
+    private long accessTokenExpiration;
+
+    @Value("${jwt.refresh-token-expiration}")
+    private long refreshTokenExpiration;
+
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
     }
@@ -51,12 +57,20 @@ public class JwtService {
             .getPayload();
     }
 
-    public String generateToken(UserDetails user) {
+    public String generateAccessToken(UserDetails user) {
+        return buildToken(user, accessTokenExpiration);
+    }
+
+    public String generateRefreshToken(UserDetails user) {
+        return buildToken(user, refreshTokenExpiration);
+    }
+
+    private String buildToken(UserDetails user, long expiration) {
         return Jwts
             .builder()
             .subject(user.getUsername())
             .issuedAt(new Date(System.currentTimeMillis()))
-            .expiration(new Date(System.currentTimeMillis() + 24 * 60 * 60 * 1000))
+            .expiration(new Date(System.currentTimeMillis() + expiration))
             .signWith(getSigningKey())
             .compact();
     }
