@@ -14,16 +14,25 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 import com.maaitlunghau.__spring_security_jwt.filter.JwtAuthenticationFilter;
 import com.maaitlunghau.__spring_security_jwt.service.UserDetailsServiceImpl;
+import com.maaitlunghau.__spring_security_jwt.config.CustomAuthenticationEntryPoint;
+import com.maaitlunghau.__spring_security_jwt.config.CustomAccessDeniedHandler;
 
 @Configuration
 public class SecurityConfig {
 
     private final UserDetailsServiceImpl userDetailsServiceImpl;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final CustomAuthenticationEntryPoint authenticationEntryPoint;
+    private final CustomAccessDeniedHandler accessDeniedHandler;
 
-    public SecurityConfig(UserDetailsServiceImpl userDetailsServiceImpl, JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(UserDetailsServiceImpl userDetailsServiceImpl,
+                          JwtAuthenticationFilter jwtAuthenticationFilter,
+                          CustomAuthenticationEntryPoint authenticationEntryPoint,
+                          CustomAccessDeniedHandler accessDeniedHandler) {
         this.userDetailsServiceImpl = userDetailsServiceImpl;
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.authenticationEntryPoint = authenticationEntryPoint;
+        this.accessDeniedHandler = accessDeniedHandler;
     }
 
     @Bean
@@ -40,6 +49,10 @@ public class SecurityConfig {
                     .authenticated()
             ).userDetailsService(userDetailsServiceImpl)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(authenticationEntryPoint)
+                .accessDeniedHandler(accessDeniedHandler)
+            )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .build();
     }   
