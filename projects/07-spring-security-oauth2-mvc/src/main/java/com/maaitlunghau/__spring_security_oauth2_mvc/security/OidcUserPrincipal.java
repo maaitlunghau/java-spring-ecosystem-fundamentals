@@ -10,7 +10,7 @@ import com.maaitlunghau.__spring_security_oauth2_mvc.model.User;
 
 // Extend DefaultOidcUser để kế thừa toàn bộ OIDC methods (getSubject, getEmail, getPicture...)
 // Chỉ thêm getUser() để controller truy cập được User entity từ SecurityContext
-public class OidcUserPrincipal extends DefaultOidcUser {
+public class OidcUserPrincipal extends DefaultOidcUser implements UserAware {
 
     private final User user;
 

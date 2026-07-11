@@ -10,7 +10,7 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 
 import com.maaitlunghau.__spring_security_oauth2_mvc.model.User;
 
-public class OAuth2UserPrincipal implements OAuth2User {
+public class OAuth2UserPrincipal implements OAuth2User, UserAware {
 
     private final User user;
     private final Map<String, Object> attributes;
