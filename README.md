@@ -28,7 +28,8 @@ java-spring-boot-fundamentals/
 │   ├── 04-rest-api-jpa-mysql/         # Spring Data JPA + MySQL
 │   ├── 05-mvc-thymeleaf/              # Spring MVC + Thymeleaf template engine
 │   ├── 06-spring-security-jwt/        # Spring Security — JWT Authentication & Authorization
-│   └── 07-spring-security-oauth2-mvc/ # Spring Security — OAuth2 Social Login (Google, GitHub)
+│   ├── 07-spring-security-oauth2-mvc/ # Spring Security — OAuth2 Social Login (Google, GitHub)
+│   └── 08-spring-security-auth0-mvc/  # Spring Security — Auth0 OIDC Login (Identity Provider)
 └── README.md
 ```
 
@@ -502,6 +503,86 @@ mvn spring-boot:run
 
 ---
 
+### 08 · spring-security-auth0-mvc — Auth0 OIDC Login
+
+**Mục tiêu:** Tích hợp Auth0 làm Identity Provider (IdP) vào Spring MVC + Thymeleaf — cách tiếp cận thực tế khi không muốn tự quản lý từng OAuth2 provider, cho phép bật Social Login (Google, GitHub, v.v.) chỉ qua Auth0 Dashboard mà không cần thêm code.
+
+**Concepts đã học:**
+- **Auth0 là Identity Provider** — tập trung quản lý user store, social connections, MFA, brute-force protection
+- **OIDC over Auth0** — Auth0 luôn trả về ID Token chuẩn OIDC dù user login bằng Google hay GitHub bên trong → chỉ cần 1 cấu hình (không cần 2 service như project 07)
+- `OidcUser` principal — inject bằng `@AuthenticationPrincipal OidcUser`, `.getClaims()` trả về `Map` các OIDC standard claims (`sub`, `name`, `email`, `picture`)
+- **Custom `LogoutHandler`** — extend `SecurityContextLogoutHandler`, clear Spring session *và* redirect sang Auth0 `/v2/logout` để clear Auth0 SSO session (tránh auto re-login)
+- **POST logout** — Spring Security yêu cầu POST cho `/logout` (CSRF), logout button phải là form `method="post"` — `<a href>` GET không trigger LogoutHandler
+- **Static resource `permitAll`** — `/js/**`, `/css/**` phải permit, nếu không Spring Security save URL static file làm "saved request" và redirect về đó sau khi login
+- **`application-local.properties` pattern** — credentials thật trong file gitignored, `${PLACEHOLDER}` trong file committed
+- **Spring Security 7 compatibility** — `AntPathRequestMatcher` đã bị xóa → dùng `.logoutUrl()`, `UriComponentsBuilder.fromHttpUrl()` → dùng `.fromUriString()`
+
+**OIDC Authorization Code Flow với Auth0:**
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant App as Spring App
+    participant A0 as Auth0
+
+    U->>App: Click "Login"
+    App->>A0: Redirect /authorize?client_id=...&scope=openid,profile,email
+    A0->>U: Auth0 Universal Login (Google, GitHub, v.v. nếu đã bật)
+    U->>A0: Đăng nhập thành công
+    A0->>App: Redirect /login/oauth2/code/auth0?code=AUTH_CODE
+    App->>A0: POST /oauth/token — đổi code lấy access_token + ID Token
+    A0-->>App: ID Token (chứa sub, email, name, picture)
+    App->>App: Parse claims → OidcUser principal
+    App-->>U: Redirect về /profile
+```
+
+**Luồng logout đầy đủ:**
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant App as Spring App
+    participant A0 as Auth0
+
+    U->>App: POST /logout (form submit — không phải GET)
+    App->>App: LogoutHandler — super.logout(): clear SecurityContext + invalidate session
+    App->>A0: Redirect /v2/logout?client_id=...&returnTo=http://localhost:8081
+    A0->>A0: Clear Auth0 SSO session
+    A0->>U: Redirect về http://localhost:8081
+```
+
+**So sánh project 07 vs 08:**
+
+| | Project 07 (OAuth2 tự implement) | Project 08 (Auth0 IdP) |
+|---|---|---|
+| Provider | Google + GitHub (mỗi cái cấu hình riêng) | Auth0 (1 cấu hình duy nhất) |
+| Custom service | 2 service (OidcUserService + OAuth2UserService) | Không cần — OIDC mặc định |
+| Social login thêm | Phải code thêm service | Bật trong Auth0 Dashboard |
+| Logout | Clear Spring session | Clear Spring + Auth0 SSO session |
+| Phù hợp | Học sâu, kiểm soát toàn bộ | Production, MVP nhanh |
+
+**Cấu trúc package:**
+```
+src/main/java/.../
+├── config/
+│   └── SecurityConfig.java
+└── controller/
+    ├── HomeController.java
+    └── LogoutHandler.java
+```
+
+**Chạy:**
+```bash
+cd projects/08-spring-security-auth0-mvc
+# Cần MySQL + file application-local.properties với AUTH0_CLIENT_ID và AUTH0_CLIENT_SECRET
+mvn spring-boot:run
+# Web UI: http://localhost:8081
+```
+
+> Chi tiết từng bước implement: [`docs/08-spring-security-auth0-mvc.md`](docs/08-spring-security-auth0-mvc.md)
+
+---
+
 ## Concepts Tổng Quan
 
 ### JVM — Java Virtual Machine
@@ -593,6 +674,6 @@ docs: update readme with new project structure
 - [x] Spring MVC + Thymeleaf (`05-mvc-thymeleaf`)
 - [x] Spring Security — JWT Authentication, Refresh Token, Redis blacklist (`06-spring-security-jwt`)
 - [x] Spring Security — OAuth2 Social Login, Google + GitHub (`07-spring-security-oauth2-mvc`)
-- [ ] Spring Security — Auth0, JWT + OAuth2 combined (`08-spring-security-auth0-mvc`)
+- [x] Spring Security — Auth0 OIDC Login, custom LogoutHandler (`08-spring-security-auth0-mvc`)
 - [ ] Spring Data JPA — Relationships, JPQL, custom queries, pagination
 - [ ] Spring Boot Testing — JUnit 5, Mockito, `@SpringBootTest`
