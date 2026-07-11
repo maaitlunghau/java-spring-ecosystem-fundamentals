@@ -35,6 +35,7 @@ public class SecurityConfig {
                 req->req
                     .requestMatchers("/api/auth/**")
                     .permitAll()
+                    .requestMatchers("/admin/**").hasRole("ADMIN")
                     .anyRequest()
                     .authenticated()
             ).userDetailsService(userDetailsServiceImpl)
