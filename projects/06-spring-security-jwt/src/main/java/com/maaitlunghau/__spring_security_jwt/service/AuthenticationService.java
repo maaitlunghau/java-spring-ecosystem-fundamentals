@@ -5,7 +5,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import com.maaitlunghau.__spring_security_jwt.model.AuthenticationResponse;
+import com.maaitlunghau.__spring_security_jwt.dto.AuthenticationResponse;
 import com.maaitlunghau.__spring_security_jwt.model.User;
 import com.maaitlunghau.__spring_security_jwt.repository.UserRepository;
 

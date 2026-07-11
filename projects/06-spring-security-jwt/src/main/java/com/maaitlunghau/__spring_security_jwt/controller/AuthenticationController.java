@@ -5,7 +5,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.maaitlunghau.__spring_security_jwt.model.AuthenticationResponse;
+import com.maaitlunghau.__spring_security_jwt.dto.AuthenticationResponse;
 import com.maaitlunghau.__spring_security_jwt.model.User;
 import com.maaitlunghau.__spring_security_jwt.service.AuthenticationService;
 
