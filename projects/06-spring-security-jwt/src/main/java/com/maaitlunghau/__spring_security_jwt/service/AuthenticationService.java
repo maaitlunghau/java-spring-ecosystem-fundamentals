@@ -1,0 +1,116 @@
+package com.maaitlunghau.__spring_security_jwt.service;
+
+import java.util.List;
+
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import com.maaitlunghau.__spring_security_jwt.dto.AuthenticationResponse;
+import com.maaitlunghau.__spring_security_jwt.dto.LoginRequest;
+import com.maaitlunghau.__spring_security_jwt.dto.RegisterRequest;
+import com.maaitlunghau.__spring_security_jwt.model.Token;
+import com.maaitlunghau.__spring_security_jwt.model.User;
+import com.maaitlunghau.__spring_security_jwt.repository.TokenRepository;
+import com.maaitlunghau.__spring_security_jwt.repository.UserRepository;
+
+@Service
+public class AuthenticationService {
+
+    private final UserRepository userRepository;
+    private final TokenRepository tokenRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
+    private final AuthenticationManager authenticationManager;
+    private final TokenBlacklist tokenBlacklist;
+
+    public AuthenticationService(
+        UserRepository userRepository,
+        TokenRepository tokenRepository,
+        PasswordEncoder passwordEncoder,
+        JwtService jwtService,
+        AuthenticationManager authenticationManager,
+        TokenBlacklist tokenBlacklist
+    ) {
+        this.userRepository = userRepository;
+        this.tokenRepository = tokenRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
+        this.authenticationManager = authenticationManager;
+        this.tokenBlacklist = tokenBlacklist;
+    }
+
+    public AuthenticationResponse register(RegisterRequest request) {
+        if (userRepository.existsByUsername(request.username())) {
+            throw new IllegalArgumentException("Username already exists: " + request.username());
+        }
+
+        User user = new User(
+            request.firstName(),
+            request.lastName(),
+            request.username(),
+            passwordEncoder.encode(request.password()),
+            request.role()
+        );
+        user = userRepository.save(user);
+
+        String accessToken = jwtService.generateAccessToken(user);
+        String refreshToken = jwtService.generateRefreshToken(user);
+        saveToken(user, refreshToken);
+
+        return new AuthenticationResponse(accessToken, refreshToken);
+    }
+
+    public AuthenticationResponse authenticate(LoginRequest request) {
+        authenticationManager.authenticate(
+            new UsernamePasswordAuthenticationToken(request.username(), request.password())
+        );
+
+        User user = userRepository.findByUsername(request.username()).orElseThrow();
+        revokeAllUserTokens(user);
+
+        String accessToken = jwtService.generateAccessToken(user);
+        String refreshToken = jwtService.generateRefreshToken(user);
+        saveToken(user, refreshToken);
+
+        return new AuthenticationResponse(accessToken, refreshToken);
+    }
+
+    public AuthenticationResponse refreshToken(String refreshToken) {
+        String username = jwtService.extractUsername(refreshToken);
+        User user = userRepository.findByUsername(username).orElseThrow();
+
+        boolean isValid = tokenRepository.findByToken(refreshToken)
+            .map(t -> !t.isLoggedOut())
+            .orElse(false);
+
+        if (!isValid || !jwtService.isValid(refreshToken, user)) {
+            throw new RuntimeException("Invalid or expired refresh token");
+        }
+
+        String newAccessToken = jwtService.generateAccessToken(user);
+        return new AuthenticationResponse(newAccessToken, refreshToken);
+    }
+
+    public void logout(String accessToken) {
+        // Blacklist JTI in Redis — immediate revocation for remaining TTL
+        String jti = jwtService.extractJti(accessToken);
+        tokenBlacklist.blacklist(jti, jwtService.extractRemainingTtl(accessToken));
+
+        // Revoke all refresh tokens in DB
+        String username = jwtService.extractUsername(accessToken);
+        User user = userRepository.findByUsername(username).orElseThrow();
+        revokeAllUserTokens(user);
+    }
+
+    private void saveToken(User user, String refreshToken) {
+        tokenRepository.save(new Token(refreshToken, user));
+    }
+
+    private void revokeAllUserTokens(User user) {
+        List<Token> validTokens = tokenRepository.findAllByUserIdAndIsLoggedOutFalse(user.getId());
+        validTokens.forEach(t -> t.setLoggedOut(true));
+        tokenRepository.saveAll(validTokens);
+    }
+}
