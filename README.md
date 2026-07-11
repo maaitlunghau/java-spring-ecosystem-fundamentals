@@ -224,6 +224,53 @@ cd projects/04-rest-api-jpa-mysql
 
 ---
 
+### 05 · mvc-thymeleaf — Spring MVC + Thymeleaf (Server-side Rendering)
+
+**Mục tiêu:** Hiểu sự khác biệt giữa REST API và server-side rendering — dùng `@Controller` + Thymeleaf để render HTML trực tiếp từ server thay vì trả JSON.
+
+**Concepts đã học:**
+- `@Controller` vs `@RestController` — trả về **view name** (String) thay vì JSON
+- `Model` — truyền dữ liệu từ controller vào Thymeleaf template
+- `@ModelAttribute` — bind form data vào DTO object tự động
+- `BindingResult` — bắt lỗi validation từ `@Valid` ngay trong controller, hiển thị lại form
+- Thymeleaf template syntax: `th:each`, `th:text`, `th:href`, `@{...}`, `${...}`
+- `redirect:/users` sau khi create/update/delete — **PRG pattern** (Post/Redirect/Get) tránh duplicate submit
+- HTML không hỗ trợ `DELETE` method → dùng `POST` form để delete
+- `BCryptPasswordEncoder` — hash password trước khi lưu DB
+- Duplicate check (username, email) ném `IllegalArgumentException` → hiển thị lỗi trên form
+
+**Sự khác biệt so với REST API:**
+
+| | REST API (project 04) | Thymeleaf (project 05) |
+|---|---|---|
+| Annotation | `@RestController` | `@Controller` |
+| Response | `ResponseEntity<DTO>` (JSON) | `String` — tên view template |
+| Form data | `@RequestBody` | `@ModelAttribute` |
+| Validation error | 400 JSON | Hiển thị lại form với thông báo |
+| Sau mutation | Trả 200/201/204 | `redirect:/users` (PRG) |
+| Client | Mobile app, SPA | Browser (render HTML) |
+
+**Pages:**
+
+| Method | URL | Mô tả |
+|---|---|---|
+| GET | `/users` | Danh sách user |
+| GET | `/users/create` | Form tạo user mới |
+| POST | `/users/create` | Submit form tạo |
+| GET | `/users/{id}/edit` | Form chỉnh sửa |
+| POST | `/users/{id}/edit` | Submit form chỉnh sửa |
+| POST | `/users/{id}/delete` | Xóa user |
+
+**Chạy:**
+```bash
+cd projects/05-mvc-thymeleaf
+# Cần MySQL đang chạy trên localhost:3306, database: mvc-thymeleaf
+./mvnw spring-boot:run
+# Web UI: http://localhost:8081/users
+```
+
+---
+
 ### 06 · spring-security-jwt — Spring Security + JWT Authentication
 
 **Mục tiêu:** Xây dựng hệ thống xác thực và phân quyền hoàn chỉnh với Spring Security, JWT stateless authentication, refresh token pattern và Redis-backed token blacklist.
