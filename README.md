@@ -27,7 +27,8 @@ java-spring-boot-fundamentals/
 │   ├── 03-crud-rest-api/              # Spring MVC + JPA — CRUD REST API, layered architecture
 │   ├── 04-rest-api-jpa-mysql/         # Spring Data JPA + MySQL
 │   ├── 05-mvc-thymeleaf/              # Spring MVC + Thymeleaf template engine
-│   └── 06-spring-security-jwt/        # Spring Security — JWT Authentication & Authorization
+│   ├── 06-spring-security-jwt/        # Spring Security — JWT Authentication & Authorization
+│   └── 07-spring-security-oauth2-mvc/ # Spring Security — OAuth2 Social Login (Google, GitHub)
 └── README.md
 ```
 
@@ -420,6 +421,87 @@ docker compose up -d        # Start MySQL + Redis + phpMyAdmin
 
 ---
 
+### 07 · spring-security-oauth2-mvc — OAuth2 Social Login
+
+**Mục tiêu:** Hiểu OAuth2 Authorization Code Flow thực sự hoạt động như thế nào bằng cách tích hợp Google và GitHub login vào Spring MVC + Thymeleaf — không dùng thư viện trung gian (Auth0, Okta), làm việc trực tiếp với Spring Security OAuth2 Client.
+
+**Concepts đã học:**
+- **OAuth2 Authorization Code Flow** — redirect → provider xác thực → callback → token exchange → UserInfo
+- `DefaultOAuth2UserService` — xử lý OAuth2 thuần (GitHub)
+- `OidcUserService` — xử lý OIDC (Google dùng OpenID Connect, mở rộng của OAuth2)
+- Custom principal: `OAuth2UserPrincipal` (GitHub), `OidcUserPrincipal` (Google) — wrap `User` entity vào security principal
+- `UserAware` interface — truy cập `User` entity từ controller mà không cần instanceof check phức tạp
+- `SavedRequestAwareAuthenticationSuccessHandler` — redirect về URL user định vào trước khi bị chuyển sang login
+- **Session fixation protection** — tạo session mới sau login, tránh session hijacking
+- `maximumSessions(1)` — giới hạn mỗi user chỉ login 1 nơi cùng lúc
+- **CSRF bật** — MVC app dùng session/form phải bảo vệ CSRF (khác REST API stateless)
+- `application-local.properties` (gitignored) — tách credentials khỏi source code
+- **Account separation by provider** — cùng email, khác provider = 2 account riêng biệt
+
+**OAuth2 Authorization Code Flow:**
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant App as Spring App
+    participant G as Google / GitHub
+
+    U->>App: Click "Login with Google"
+    App->>G: Redirect với client_id, redirect_uri, scope, state
+    G->>U: Hiển thị trang đăng nhập + xác nhận quyền
+    U->>G: Đồng ý cấp quyền
+    G->>App: Redirect về /login/oauth2/code/google?code=AUTH_CODE
+    App->>G: Đổi AUTH_CODE lấy access_token (POST /token)
+    G-->>App: access_token
+    App->>G: Fetch UserInfo với access_token
+    G-->>App: { sub, email, name, picture }
+    App->>App: CustomOidcUserService — save/update user vào DB
+    App-->>U: Redirect về /dashboard
+```
+
+**Cấu trúc package:**
+```
+src/main/java/.../
+├── config/
+│   └── SecurityConfig.java
+├── controller/
+│   ├── HomeController.java
+│   └── DashboardController.java
+├── handler/
+│   └── OAuth2LoginSuccessHandler.java
+├── model/
+│   ├── AuthProvider.java
+│   ├── Role.java
+│   └── User.java
+├── repository/
+│   └── UserRepository.java
+├── security/
+│   ├── UserAware.java
+│   ├── OAuth2UserPrincipal.java
+│   └── OidcUserPrincipal.java
+└── service/
+    ├── CustomOAuth2UserService.java
+    └── CustomOidcUserService.java
+```
+
+**Providers:**
+
+| Provider | Protocol | Service xử lý | Principal |
+|---|---|---|---|
+| Google | OIDC (OpenID Connect) | `CustomOidcUserService` | `OidcUserPrincipal` |
+| GitHub | OAuth2 thuần | `CustomOAuth2UserService` | `OAuth2UserPrincipal` |
+
+**Chạy:**
+```bash
+cd projects/07-spring-security-oauth2-mvc
+mvn spring-boot:run
+# Web UI: http://localhost:8081
+```
+
+> Chi tiết từng bước implement: [`docs/07-spring-security-oauth2-mvc.md`](docs/07-spring-security-oauth2-mvc.md)
+
+---
+
 ## Concepts Tổng Quan
 
 ### JVM — Java Virtual Machine
@@ -510,5 +592,7 @@ docs: update readme with new project structure
 - [x] Spring Data JPA + MySQL (`04-rest-api-jpa-mysql`)
 - [x] Spring MVC + Thymeleaf (`05-mvc-thymeleaf`)
 - [x] Spring Security — JWT Authentication, Refresh Token, Redis blacklist (`06-spring-security-jwt`)
+- [x] Spring Security — OAuth2 Social Login, Google + GitHub (`07-spring-security-oauth2-mvc`)
+- [ ] Spring Security — Auth0, JWT + OAuth2 combined (`08-spring-security-auth0-mvc`)
 - [ ] Spring Data JPA — Relationships, JPQL, custom queries, pagination
 - [ ] Spring Boot Testing — JUnit 5, Mockito, `@SpringBootTest`
