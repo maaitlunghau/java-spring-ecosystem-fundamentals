@@ -190,6 +190,40 @@ cd projects/03-crud-rest-api
 
 ---
 
+### 04 · rest-api-jpa-mysql — Spring Data JPA + MySQL
+
+**Mục tiêu:** Xây dựng REST API CRUD hoàn chỉnh với Spring Data JPA kết nối MySQL thực tế, áp dụng đúng layered architecture, DTO pattern, Bean Validation và global exception handling.
+
+**Concepts đã học:**
+- Spring Data JPA + MySQL — `JpaRepository` kết nối database thật (không dùng H2)
+- `@Transactional(readOnly = true)` ở class level, override `@Transactional` cho write operations
+- **Hibernate dirty checking** — update managed entity trực tiếp, không cần gọi `save()` tường minh
+- Java Records cho DTO — `CreateProductRequest`, `UpdateProductRequest`, `ProductResponse`
+- Bean Validation — `@Valid`, `@NotBlank`, `@Min` trên Request DTO (không phải Entity)
+- `@RestControllerAdvice` — `GlobalExceptionHandler` tập trung xử lý mọi exception
+- `ResourceNotFoundException` → 404, `MethodArgumentNotValidException` → 400, fallback → 500
+- Entity không expose ra ngoài API — tầng Service map Entity → DTO trước khi trả về
+
+**Endpoints:**
+
+| Method | URL | Mô tả |
+|---|---|---|
+| GET | `/api/products` | Lấy danh sách tất cả product |
+| GET | `/api/products/{productId}` | Lấy product theo ID |
+| POST | `/api/products` | Tạo product mới |
+| PUT | `/api/products/{productId}` | Cập nhật product |
+| DELETE | `/api/products/{productId}` | Xóa product |
+
+**Chạy:**
+```bash
+cd projects/04-rest-api-jpa-mysql
+# Cần MySQL đang chạy trên localhost:3306, database: rest-api-jpa-mysql
+./mvnw spring-boot:run
+# API: http://localhost:8081/api/products
+```
+
+---
+
 ### 06 · spring-security-jwt — Spring Security + JWT Authentication
 
 **Mục tiêu:** Xây dựng hệ thống xác thực và phân quyền hoàn chỉnh với Spring Security, JWT stateless authentication, refresh token pattern và Redis-backed token blacklist.
