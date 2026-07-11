@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .btn-google { background-color: #fff; border: 1px solid #dadce0; color: #3c4043; }
+        .btn-google:hover { background-color: #f8f9fa; border-color: #dadce0; }
+        .btn-github { background-color: #24292e; color: #fff; }
+        .btn-github:hover { background-color: #1b1f23; color: #fff; }
+        .divider { display: flex; align-items: center; gap: 12px; color: #6c757d; font-size: 0.85rem; }
+        .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #dee2e6; }
+    </style>
+</head>
+<body class="bg-light">
+
+<div class="min-vh-100 d-flex align-items-center justify-content-center">
+    <div class="card shadow-sm" style="width: 420px;">
+        <div class="card-body p-5">
+            <h4 class="text-center fw-bold mb-1">Sign in</h4>
+            <p class="text-center text-muted mb-4" style="font-size: 0.9rem;">Choose your preferred provider</p>
+
+            <!-- Spring Security tự tạo /oauth2/authorization/{registrationId} -->
+            <a href="/oauth2/authorization/google" class="btn btn-google w-100 mb-3 d-flex align-items-center justify-content-center gap-2">
+                <img src="https://developers.google.com/identity/images/g-logo.png" width="18" height="18" alt="Google">
+                Continue with Google
+            </a>
+
+            <a href="/oauth2/authorization/github" class="btn btn-github w-100 d-flex align-items-center justify-content-center gap-2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12"/>
+                </svg>
+                Continue with GitHub
+            </a>
+
+            <div class="divider my-4">or</div>
+
+            <p class="text-center text-muted mb-0" style="font-size: 0.85rem;">
+                <a href="/" class="text-decoration-none">← Back to home</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
