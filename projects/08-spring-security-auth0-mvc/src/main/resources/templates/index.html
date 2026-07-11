@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org" data-bs-theme="auto">
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
+    xmlns:sec="http://www.thymeleaf.org/thymeleaf-extras-springsecurity5" data-bs-theme="auto">
 
 <head>
     <meta charset="utf-8">
@@ -197,7 +198,8 @@
                             <title>Search</title>
                             <circle cx="10.5" cy="10.5" r="7.5"></circle>
                             <path d="M21 21l-5.2-5.2"></path>
-                        </svg> </a> <a class="btn btn-sm btn-outline-secondary" href="#">Sign up</a> </div>
+                        </svg> </a> <a class="btn btn-sm btn-outline-secondary"
+                        th:href="@{/oauth2/authorization/auth0}">Login</a> </div>
             </div>
         </header>
         <div class="nav-scroller py-1 mb-3 border-bottom">
