@@ -1,6 +1,8 @@
 package com.maaitlunghau.__spring_security_jwt.service;
 
+import java.time.Duration;
 import java.util.Date;
+import java.util.UUID;
 import java.util.function.Function;
 
 import javax.crypto.SecretKey;
@@ -28,6 +30,16 @@ public class JwtService {
 
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
+    }
+
+    public String extractJti(String token) {
+        return extractClaim(token, Claims::getId);
+    }
+
+    public Duration extractRemainingTtl(String token) {
+        Date expiration = extractExpiration(token);
+        long remaining = expiration.getTime() - System.currentTimeMillis();
+        return Duration.ofMillis(Math.max(remaining, 0));
     }
 
     public boolean isValid(String token, UserDetails user) {
@@ -58,21 +70,24 @@ public class JwtService {
     }
 
     public String generateAccessToken(UserDetails user) {
-        return buildToken(user, accessTokenExpiration);
+        return buildToken(user, accessTokenExpiration, true);
     }
 
     public String generateRefreshToken(UserDetails user) {
-        return buildToken(user, refreshTokenExpiration);
+        return buildToken(user, refreshTokenExpiration, false);
     }
 
-    private String buildToken(UserDetails user, long expiration) {
-        return Jwts
-            .builder()
+    private String buildToken(UserDetails user, long expiration, boolean includeJti) {
+        var builder = Jwts.builder()
             .subject(user.getUsername())
             .issuedAt(new Date(System.currentTimeMillis()))
-            .expiration(new Date(System.currentTimeMillis() + expiration))
-            .signWith(getSigningKey())
-            .compact();
+            .expiration(new Date(System.currentTimeMillis() + expiration));
+
+        if (includeJti) {
+            builder.id(UUID.randomUUID().toString());
+        }
+
+        return builder.signWith(getSigningKey()).compact();
     }
 
     private SecretKey getSigningKey() {
