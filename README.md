@@ -248,14 +248,37 @@ sequenceDiagram
 
     Note over C,RD: AUTHENTICATED REQUEST
     C->>F: GET /admin/greeting — Authorization: Bearer accessToken
-    F->>JS: extractUsername(token)
-    F->>JS: extractJti(token)
-    F->>RD: isBlacklisted(jti)?
-    RD-->>F: false — not revoked
-    F->>JS: isValid(token, userDetails) — check signature + expiry
-    JS-->>F: true
-    F-->>AC: proceed — SecurityContext set with authorities
-    AC-->>C: 200 OK
+    alt No Authorization header or missing Bearer
+        F-->>C: pass through — Spring Security returns 401
+    else Token present
+        F->>JS: extractUsername(token)
+        alt Token invalid or expired (JwtException)
+            JS-->>F: throws JwtException
+            F-->>C: pass through — CustomAuthenticationEntryPoint returns 401
+        else Token parsed successfully
+            F->>JS: extractJti(token)
+            F->>RD: isBlacklisted(jti)?
+            alt jti found in Redis (logged out)
+                RD-->>F: true — revoked
+                F-->>C: pass through — CustomAuthenticationEntryPoint returns 401
+            else jti not blacklisted
+                RD-->>F: false
+                F->>JS: isValid(token, userDetails) — check signature + expiry
+                alt token invalid
+                    JS-->>F: false
+                    F-->>C: pass through — CustomAuthenticationEntryPoint returns 401
+                else token valid
+                    JS-->>F: true
+                    F-->>AC: proceed — SecurityContext set with authorities
+                    alt user lacks required role
+                        AC-->>C: CustomAccessDeniedHandler returns 403
+                    else authorized
+                        AC-->>C: 200 OK
+                    end
+                end
+            end
+        end
+    end
 
     Note over C,RD: REFRESH TOKEN
     C->>AC: POST /api/auth/refresh-token — Authorization: Bearer refreshToken
