@@ -201,8 +201,9 @@
                         </svg> </a>
                     <a class="btn btn-sm btn-outline-secondary" sec:authorize="!isAuthenticated()"
                         th:href="@{/oauth2/authorization/auth0}">Login</a>
-                    <a class="btn btn-sm btn-outline-secondary btn-danger text-white" sec:authorize="isAuthenticated()"
-                        th:href="@{/logout}">Logout</a>
+                    <form sec:authorize="isAuthenticated()" th:action="@{/logout}" method="post" class="d-inline">
+                        <button type="submit" class="btn btn-sm btn-danger text-white">Logout</button>
+                    </form>
                 </div>
             </div>
         </header>
