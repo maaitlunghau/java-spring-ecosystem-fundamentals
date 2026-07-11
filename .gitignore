@@ -26,5 +26,8 @@ spring.log
 .env
 .env.local
 
+# Sensitive Spring config — chứa credentials, không commit
+**/application-local.properties
+
 # OS
 Thumbs.db
