@@ -91,10 +91,9 @@ public class AuthenticationService {
     }
 
     public void logout(String refreshToken) {
-        tokenRepository.findByToken(refreshToken).ifPresent(t -> {
-            t.setLoggedOut(true);
-            tokenRepository.save(t);
-        });
+        String username = jwtService.extractUsername(refreshToken);
+        User user = userRepository.findByUsername(username).orElseThrow();
+        revokeAllUserTokens(user);
     }
 
     private void saveToken(User user, String refreshToken) {
