@@ -23,19 +23,22 @@ public class AuthenticationService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final TokenBlacklist tokenBlacklist;
 
     public AuthenticationService(
         UserRepository userRepository,
         TokenRepository tokenRepository,
         PasswordEncoder passwordEncoder,
         JwtService jwtService,
-        AuthenticationManager authenticationManager
+        AuthenticationManager authenticationManager,
+        TokenBlacklist tokenBlacklist
     ) {
         this.userRepository = userRepository;
         this.tokenRepository = tokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.authenticationManager = authenticationManager;
+        this.tokenBlacklist = tokenBlacklist;
     }
 
     public AuthenticationResponse register(RegisterRequest request) {
@@ -90,8 +93,13 @@ public class AuthenticationService {
         return new AuthenticationResponse(newAccessToken, refreshToken);
     }
 
-    public void logout(String refreshToken) {
-        String username = jwtService.extractUsername(refreshToken);
+    public void logout(String accessToken) {
+        // Blacklist JTI in Redis — immediate revocation for remaining TTL
+        String jti = jwtService.extractJti(accessToken);
+        tokenBlacklist.blacklist(jti, jwtService.extractRemainingTtl(accessToken));
+
+        // Revoke all refresh tokens in DB
+        String username = jwtService.extractUsername(accessToken);
         User user = userRepository.findByUsername(username).orElseThrow();
         revokeAllUserTokens(user);
     }
