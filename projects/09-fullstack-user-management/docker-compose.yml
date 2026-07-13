@@ -1,0 +1,37 @@
+services:
+  mysql:
+    image: mysql:8
+    container_name: umgmt-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: 112233
+      MYSQL_DATABASE: user_management
+    volumes:
+      - umgmt_mysql:/var/lib/mysql
+
+  redis:
+    image: redis:7
+    container_name: umgmt-redis
+    ports:
+      - "6379:6379"
+
+  mailhog:
+    image: axllent/mailpit
+    container_name: umgmt-mailhog
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web
+
+  phpmyadmin:
+    image: phpmyadmin
+    container_name: umgmt-phpmyadmin
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: root
+      PMA_PASSWORD: 112233
+
+volumes:
+  umgmt_mysql:
