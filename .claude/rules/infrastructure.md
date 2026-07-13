@@ -1,88 +1,44 @@
 # Infrastructure Rules — Spring Boot Learning
 
-## Database Mặc Định: H2 Embedded
+## Database Mặc Định: MySQL
 
-Không cần Docker — nhanh gọn cho learning. Chỉ cần add dependency và config:
+Các sub-project chủ yếu dùng **MySQL 8** (chạy qua Docker), gần với môi trường thực tế.
 
 ```xml
 <!-- pom.xml -->
 <dependency>
-    <groupId>com.h2database</groupId>
-    <artifactId>h2</artifactId>
+    <groupId>com.mysql</groupId>
+    <artifactId>mysql-connector-j</artifactId>
     <scope>runtime</scope>
 </dependency>
 ```
-
-```yaml
-# application.yml
-spring:
-  datasource:
-    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
-  jpa:
-    database-platform: org.hibernate.dialect.H2Dialect
-    hibernate:
-      ddl-auto: create-drop   # Tạo schema khi start, xóa khi stop
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-```
-
-**H2 Console**: `http://localhost:8080/h2-console`
-- JDBC URL: `jdbc:h2:mem:testdb`
-- Username: `sa`
-- Password: (để trống)
-
-## PostgreSQL với Docker
-
-Dùng khi cần persistence hoặc muốn gần với môi trường thực tế:
 
 ```yaml
 # docker-compose.yml (đặt trong thư mục sub-project)
 services:
-  postgres:
-    image: postgres:16
+  mysql:
+    image: mysql:8
     ports:
-      - "5432:5432"
+      - "3306:3306"
     environment:
-      POSTGRES_DB: springdb
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: 112233
+      MYSQL_DATABASE: springdb
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mysql_data:/var/lib/mysql
 
 volumes:
-  postgres_data:
+  mysql_data:
 ```
 
-```xml
-<!-- pom.xml -->
-<dependency>
-    <groupId>org.postgresql</groupId>
-    <artifactId>postgresql</artifactId>
-    <scope>runtime</scope>
-</dependency>
-```
-
-```yaml
-# application.yml
-spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/springdb
-    username: postgres
-    password: password
-  jpa:
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
-    hibernate:
-      ddl-auto: update
-    show-sql: true
+```properties
+# application.properties
+spring.datasource.url=jdbc:mysql://${MYSQL_HOST:localhost}:3306/springdb?useSSL=false&serverTimezone=UTC
+spring.datasource.username=root
+spring.datasource.password=112233
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.open-in-view=false
 ```
 
 ```bash
@@ -93,13 +49,46 @@ docker compose down -v    # Stop + xóa volumes (reset data)
 docker compose logs -f    # Xem logs
 ```
 
+## H2 (tùy chọn — in-memory, quick test)
+
+Khi muốn chạy thử nhanh, zero-setup (không cần Docker/cài DB) — vd project học thuần logic:
+
+```xml
+<!-- pom.xml -->
+<dependency>
+    <groupId>com.h2database</groupId>
+    <artifactId>h2</artifactId>
+    <scope>runtime</scope>
+</dependency>
+```
+
+```properties
+# application.properties
+spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
+spring.datasource.driver-class-name=org.h2.Driver
+spring.datasource.username=sa
+spring.datasource.password=
+spring.h2.console.enabled=true
+spring.jpa.hibernate.ddl-auto=create-drop
+spring.jpa.show-sql=true
+```
+
+**H2 Console**: `http://localhost:8081/h2-console` — JDBC URL `jdbc:h2:mem:testdb`, User `sa`, Password để trống.
+
+## Database khác (khi cần)
+
+| Database | Dependency | Ghi chú |
+|---------|-----------|---------|
+| SQL Server | `com.microsoft.sqlserver:mssql-jdbc` (scope: runtime) | Driver JDBC cho MS SQL Server |
+| MongoDB | `spring-boot-starter-data-mongodb` | NoSQL — dùng Spring Data MongoDB (không phải JPA) |
+
 ## Ports
 
 | Service | Port | URL |
 |---------|------|-----|
-| Spring Boot App | 8080 | http://localhost:8080 |
-| H2 Console | 8080 | http://localhost:8080/h2-console |
-| PostgreSQL | 5432 | jdbc:postgresql://localhost:5432/springdb |
+| Spring Boot App | 8081 | http://localhost:8081 |
+| H2 Console | 8081 | http://localhost:8081/h2-console |
+| MySQL | 3306 | jdbc:mysql://localhost:3306/springdb |
 
 ## DDL Auto Strategy
 

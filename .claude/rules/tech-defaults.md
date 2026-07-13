@@ -18,9 +18,10 @@ Khi thêm tính năng mới vào bất kỳ sub-project nào, dùng các thư vi
 
 | Môi trường | Dependency | Ghi chú |
 |-----------|-----------|---------|
-| Learning / Dev | `com.h2database:h2` (scope: runtime) | In-memory, không cần cài đặt |
-| Production-like | `org.postgresql:postgresql` (scope: runtime) | Dùng kèm Docker |
-| MySQL (nếu cần) | `com.mysql:mysql-connector-j` (scope: runtime) | |
+| Mặc định (dev + persist) | `com.mysql:mysql-connector-j` (scope: runtime) | MySQL 8, dùng kèm Docker |
+| In-memory (quick test) | `com.h2database:h2` (scope: runtime) | Optional — không cần cài đặt |
+| SQL Server | `com.microsoft.sqlserver:mssql-jdbc` (scope: runtime) | Khi cần |
+| MongoDB | `spring-boot-starter-data-mongodb` | NoSQL — Spring Data MongoDB (không phải JPA) |
 
 ## Versions Mặc Định
 
@@ -28,7 +29,7 @@ Khi thêm tính năng mới vào bất kỳ sub-project nào, dùng các thư vi
 <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.5.x</version>  <!-- latest stable -->
+    <version><!-- latest stable, lấy từ start.spring.io --></version>
 </parent>
 
 <properties>
@@ -37,7 +38,7 @@ Khi thêm tính năng mới vào bất kỳ sub-project nào, dùng các thư vi
 ```
 
 - **Java**: 21 (LTS)
-- **Spring Boot**: 3.x (parent POM quản lý version của tất cả dependency)
+- **Spring Boot**: latest stable (parent POM quản lý version của tất cả dependency — không cần fix cứng version)
 - **Build tool**: Maven với Maven Wrapper (`./mvnw`) — không cần cài Maven global
 
 ## Lombok (Optional — dùng thận trọng)

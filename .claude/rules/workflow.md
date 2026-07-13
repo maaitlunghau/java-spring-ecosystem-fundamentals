@@ -95,7 +95,7 @@ server:
 logging:
   level:
     org.hibernate.SQL: DEBUG              # Xem SQL queries
-    org.hibernate.orm.jdbc.bind: TRACE    # Xem bind parameters (Spring Boot 3.x)
+    org.hibernate.orm.jdbc.bind: TRACE    # Xem bind parameters (Spring Boot 3.x trở lên)
     com.example: DEBUG                    # Xem log của code mình
 ```
 
