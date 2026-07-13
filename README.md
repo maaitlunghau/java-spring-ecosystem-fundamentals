@@ -279,6 +279,8 @@ cd projects/05-mvc-thymeleaf
 # Web UI: http://localhost:8081/users
 ```
 
+> Chi tiết từng bước implement: [`docs/05-mvc-thymeleaf.md`](docs/05-mvc-thymeleaf.md)
+
 ---
 
 ### 06 · spring-security-jwt — Spring Security + JWT Authentication
