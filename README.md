@@ -20,6 +20,8 @@ Repo học và luyện tập **Java Spring Framework + Spring Boot** theo kiểu
 ```
 java-spring-boot-fundamentals/
 ├── docs/
+│   ├── guides/                        # Step-by-step implementation guides (01–08)
+│   ├── plans/                         # Project planning documents
 │   └── notes-raw.txt                  # Ghi chú học tập thô
 ├── projects/
 │   ├── 01-rest-controller/            # Spring MVC — @RestController, HTTP mappings
@@ -54,7 +56,7 @@ cd projects/01-rest-controller
 # Truy cập: http://localhost:8081
 ```
 
-> Chi tiết từng bước implement: [`docs/01-rest-controller.md`](docs/01-rest-controller.md)
+> Chi tiết từng bước implement: [`docs/guides/01-rest-controller.md`](docs/guides/01-rest-controller.md)
 
 ---
 
@@ -160,7 +162,7 @@ cd projects/02-ioc-and-di
 ./mvnw spring-boot:run
 ```
 
-> Chi tiết từng bước implement: [`docs/02-ioc-and-di.md`](docs/02-ioc-and-di.md)
+> Chi tiết từng bước implement: [`docs/guides/02-ioc-and-di.md`](docs/guides/02-ioc-and-di.md)
 
 ---
 
@@ -194,7 +196,7 @@ cd projects/03-crud-rest-api
 # H2 Console: http://localhost:8081/h2-console  (JDBC URL: jdbc:h2:mem:maaitlunghau, User: sa)
 ```
 
-> Chi tiết từng bước implement: [`docs/03-crud-rest-api.md`](docs/03-crud-rest-api.md)
+> Chi tiết từng bước implement: [`docs/guides/03-crud-rest-api.md`](docs/guides/03-crud-rest-api.md)
 
 ---
 
@@ -230,7 +232,7 @@ cd projects/04-rest-api-jpa-mysql
 # API: http://localhost:8081/api/products
 ```
 
-> Chi tiết từng bước implement: [`docs/04-rest-api-jpa-mysql.md`](docs/04-rest-api-jpa-mysql.md)
+> Chi tiết từng bước implement: [`docs/guides/04-rest-api-jpa-mysql.md`](docs/guides/04-rest-api-jpa-mysql.md)
 
 ---
 
@@ -279,7 +281,7 @@ cd projects/05-mvc-thymeleaf
 # Web UI: http://localhost:8081/users
 ```
 
-> Chi tiết từng bước implement: [`docs/05-mvc-thymeleaf.md`](docs/05-mvc-thymeleaf.md)
+> Chi tiết từng bước implement: [`docs/guides/05-mvc-thymeleaf.md`](docs/guides/05-mvc-thymeleaf.md)
 
 ---
 
@@ -430,7 +432,7 @@ docker compose up -d        # Start MySQL + Redis + phpMyAdmin
 | phpMyAdmin | `http://localhost:8080` (root / 112233) |
 | Redis | `localhost:6379` |
 
-> Chi tiết từng bước implement: [`docs/06-spring-security-jwt.md`](docs/06-spring-security-jwt.md)
+> Chi tiết từng bước implement: [`docs/guides/06-spring-security-jwt.md`](docs/guides/06-spring-security-jwt.md)
 
 ---
 
@@ -511,7 +513,7 @@ mvn spring-boot:run
 # Web UI: http://localhost:8081
 ```
 
-> Chi tiết từng bước implement: [`docs/07-spring-security-oauth2-mvc.md`](docs/07-spring-security-oauth2-mvc.md)
+> Chi tiết từng bước implement: [`docs/guides/07-spring-security-oauth2-mvc.md`](docs/guides/07-spring-security-oauth2-mvc.md)
 
 ---
 
@@ -591,7 +593,7 @@ mvn spring-boot:run
 # Web UI: http://localhost:8081
 ```
 
-> Chi tiết từng bước implement: [`docs/08-spring-security-auth0-mvc.md`](docs/08-spring-security-auth0-mvc.md)
+> Chi tiết từng bước implement: [`docs/guides/08-spring-security-auth0-mvc.md`](docs/guides/08-spring-security-auth0-mvc.md)
 
 ---
 
