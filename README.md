@@ -54,6 +54,8 @@ cd projects/01-rest-controller
 # Truy cập: http://localhost:8081
 ```
 
+> Chi tiết từng bước implement: [`docs/01-rest-controller.md`](docs/01-rest-controller.md)
+
 ---
 
 ### 02 · ioc-and-di — Spring Core: IoC & Dependency Injection
