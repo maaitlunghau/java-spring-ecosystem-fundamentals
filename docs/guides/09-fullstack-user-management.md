@@ -169,7 +169,7 @@ projects/09-fullstack-user-management/
 │       │       ├── BadRequestException.java
 │       │       └── GlobalExceptionHandler.java
 │       └── resources/
-│           ├── application.properties
+│           ├── application.yml
 │           └── application-local.properties   (gitignored — Auth0 secret)
 └── frontend/   (tóm tắt ở mục 12)
 ```
@@ -364,58 +364,82 @@ Phần `<dependencies>` đầy đủ:
 
 ---
 
-## Bước 4 — `application.properties`
+## Bước 4 — `application.yml`
 
-`src/main/resources/application.properties`:
+Dùng YAML (nested, gọn, hợp trending). `src/main/resources/application.yml`:
 
-```properties
-spring.application.name=fullstack-user-management
-server.port=8081
+```yaml
+spring:
+  application:
+    name: 09-fullstack-user-management
 
-# ===== MySQL =====
-spring.datasource.url=jdbc:mysql://${MYSQL_HOST:localhost}:3306/user_management?useSSL=false&serverTimezone=UTC&createDatabaseIfNotExist=true
-spring.datasource.username=root
-spring.datasource.password=112233
-spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+  datasource:
+    url: "jdbc:mysql://${MYSQL_HOST:localhost}:3306/user_management?useSSL=false&serverTimezone=UTC&createDatabaseIfNotExist=true"
+    username: root
+    password: "112233"
+    driver-class-name: com.mysql.cj.jdbc.Driver
 
-# ===== JPA =====
-spring.jpa.hibernate.ddl-auto=update
-spring.jpa.show-sql=true
-spring.jpa.open-in-view=false
-spring.jpa.properties.hibernate.format_sql=true
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
 
-# ===== Redis =====
-spring.data.redis.host=localhost
-spring.data.redis.port=6379
+  data:
+    redis:
+      host: localhost
+      port: 6379
 
-# ===== Mail (MailHog) =====
-spring.mail.host=localhost
-spring.mail.port=1025
-spring.mail.properties.mail.smtp.auth=false
-spring.mail.properties.mail.smtp.starttls.enable=false
+  mail:
+    host: localhost
+    port: 1025
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
 
-# ===== App config =====
-app.frontend-url=http://localhost:5173
-app.mail.from=no-reply@usermgmt.local
+  security:
+    oauth2:
+      client:
+        registration:
+          auth0:
+            client-id: ${AUTH0_CLIENT_ID}
+            client-secret: ${AUTH0_CLIENT_SECRET}
+            scope: openid,profile,email
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/auth0"
+        provider:
+          auth0:
+            issuer-uri: "https://${AUTH0_DOMAIN}/"
 
-# ===== JWT =====
-app.jwt.secret=aVeryLongSecretKeyForHmacSha256ThatIsAtLeast32Bytes!!
-app.jwt.access-token-expiration=900000
-app.jwt.refresh-token-expiration=604800000
+  # Load file local (nếu có) — chứa AUTH0_* thật, gitignored
+  config:
+    import: "optional:application-local.properties"
 
-# ===== Auth0 (giá trị thật để trong application-local.properties, gitignored) =====
-spring.security.oauth2.client.registration.auth0.client-id=${AUTH0_CLIENT_ID}
-spring.security.oauth2.client.registration.auth0.client-secret=${AUTH0_CLIENT_SECRET}
-spring.security.oauth2.client.registration.auth0.scope=openid,profile,email
-spring.security.oauth2.client.registration.auth0.authorization-grant-type=authorization_code
-spring.security.oauth2.client.registration.auth0.redirect-uri={baseUrl}/login/oauth2/code/auth0
-spring.security.oauth2.client.provider.auth0.issuer-uri=https://${AUTH0_DOMAIN}/
+server:
+  port: 8081
 
-# Load file local (nếu có)
-spring.config.import=optional:application-local.properties
+app:
+  frontend-url: "http://localhost:5173"
+  mail:
+    from: no-reply@usermgmt.local
+  jwt:
+    secret: "aVeryLongSecretKeyForHmacSha256ThatIsAtLeast32Bytes!!"
+    access-token-expiration: 900000
+    refresh-token-expiration: 604800000
 ```
 
-`application-local.properties` (thêm vào `.gitignore`):
+> **Lưu ý cú pháp YAML — phải quote các giá trị này** (nếu không sẽ lỗi khi parse):
+> - `redirect-uri: "{baseUrl}/..."` — chuỗi bắt đầu bằng `{` sẽ bị hiểu là flow-map.
+> - URL JDBC, `issuer-uri: "https://..."`, `import: "optional:..."` — chứa dấu `:` .
+> - `secret: "...!!"` và `password: "112233"` — quote để giữ nguyên kiểu String.
+
+`application-local.properties` (giữ định dạng properties, thêm vào `.gitignore`):
 
 ```properties
 AUTH0_DOMAIN=your-tenant.us.auth0.com
@@ -423,7 +447,7 @@ AUTH0_CLIENT_ID=xxxxxxxxxxxx
 AUTH0_CLIENT_SECRET=yyyyyyyyyyyy
 ```
 
-> Phase 1–2 chưa cần Auth0. Nếu chưa có tài khoản Auth0, tạm comment 6 dòng `spring.security.oauth2.*` để app khởi động được, mở lại ở Phase 3.
+> Phase 1–2 chưa cần Auth0. Nếu chưa có tài khoản Auth0, tạm comment nhánh `spring.security.oauth2.*` để app khởi động được, mở lại ở Phase 3.
 
 ---
 
@@ -2106,7 +2130,7 @@ curl http://localhost:8081/api/me -H "Authorization: Bearer <ACCESS>"
    - **Allowed Logout URLs:** `http://localhost:5173`
 4. Copy **Domain**, **Client ID**, **Client Secret** vào `application-local.properties` (Bước 4).
 5. **Authentication → Social** trong Auth0 Dashboard: bật Google, GitHub, Facebook, LinkedIn, Microsoft, SMS tùy nhu cầu — **không cần code thêm gì** ở Spring.
-6. Bỏ comment 6 dòng `spring.security.oauth2.*` trong `application.properties`.
+6. Bỏ comment nhánh `spring.security.oauth2.*` trong `application.yml`.
 
 ## Bước 35 — Entity `SocialAccount.java`
 
