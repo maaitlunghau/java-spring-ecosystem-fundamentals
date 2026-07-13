@@ -639,3 +639,5 @@ services:
 ---
 
 > **Bước tiếp theo sau khi chốt plan:** tạo skeleton `projects/09-fullstack-user-management/`, rồi viết guide implement chi tiết `docs/guides/09-fullstack-user-management.md` theo từng phase.
+
+> **Roadmap tiếp theo:** Project 09 là MVP — một repo riêng sẽ mở rộng thêm Post / Comment / Like, tích hợp CI/CD, GitHub Projects và deployment production.
