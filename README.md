@@ -194,6 +194,8 @@ cd projects/03-crud-rest-api
 # H2 Console: http://localhost:8081/h2-console  (JDBC URL: jdbc:h2:mem:maaitlunghau, User: sa)
 ```
 
+> Chi tiết từng bước implement: [`docs/03-crud-rest-api.md`](docs/03-crud-rest-api.md)
+
 ---
 
 ### 04 · rest-api-jpa-mysql — Spring Data JPA + MySQL
