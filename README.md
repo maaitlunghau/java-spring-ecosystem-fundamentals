@@ -430,6 +430,8 @@ docker compose up -d        # Start MySQL + Redis + phpMyAdmin
 | phpMyAdmin | `http://localhost:8080` (root / 112233) |
 | Redis | `localhost:6379` |
 
+> Chi tiết từng bước implement: [`docs/06-spring-security-jwt.md`](docs/06-spring-security-jwt.md)
+
 ---
 
 ### 07 · spring-security-oauth2-mvc — OAuth2 Social Login
