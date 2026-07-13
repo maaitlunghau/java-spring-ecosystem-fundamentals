@@ -30,7 +30,7 @@ Xây dựng backend quản lý User hoàn chỉnh như sản phẩm thật, chia
 | Spring Boot | Latest stable (4.x) | Web MVC servlet, blocking |
 | Java | 21 | |
 | Web | `spring-boot-starter-webmvc` | Boot 4 đổi tên từ `-web` |
-| Security | `spring-boot-starter-security` + `oauth2-client` | JWT filter + Auth0 OIDC |
+| Security | `spring-boot-starter-security` + `spring-boot-starter-security-oauth2-client` | JWT filter + Auth0 OIDC |
 | JWT | JJWT 0.13.0 (`api` + `impl` + `jackson`) | Tái dùng từ project 06 |
 | Persistence | `spring-boot-starter-data-jpa` | Hibernate + Specification API |
 | Validation | `spring-boot-starter-validation` | Bean Validation |
@@ -99,7 +99,7 @@ Không xóa vật lý — đánh dấu cột `deleted_at`. Hibernate 6.4+ có an
 
 ### 5. RBAC — Role-Based Access Control
 
-User có nhiều `Role` (many-to-many). `getAuthorities()` trả về authority có prefix `ROLE_` để `hasRole('ADMIN')` hoạt động. Bật `@EnableMethodSecurity` để dùng `@PreAuthorize` trên từng method.
+User có một `Role` (enum `USER`/`ADMIN`) — đơn giản, hợp MVP. `getAuthorities()` thêm prefix `ROLE_` vào tên enum để `hasRole('ADMIN')` hoạt động. Bật `@EnableMethodSecurity` để dùng `@PreAuthorize` trên từng method.
 
 ### 6. Account linking (Hướng B) — điểm khó nhất
 
@@ -148,7 +148,6 @@ projects/09-fullstack-user-management/
 │       │   │   └── OAuth2LoginSuccessHandler.java
 │       │   ├── repository/
 │       │   │   ├── UserRepository.java
-│       │   │   ├── RoleRepository.java
 │       │   │   ├── RefreshTokenRepository.java
 │       │   │   ├── SocialAccountRepository.java
 │       │   │   └── VerificationTokenRepository.java
@@ -244,7 +243,7 @@ Vào [start.spring.io](https://start.spring.io):
 - **Project:** Maven, **Language:** Java, **Spring Boot:** latest stable
 - **Group:** `com.maaitlunghau`, **Artifact:** `09-fullstack-user-management`
 - **Java:** 21
-- **Dependencies:** Spring Web, Spring Security, OAuth2 Client, Spring Data JPA, Validation, Java Mail Sender, Spring Data Redis, MySQL Driver, Lombok
+- **Dependencies:** Spring Web, Spring Security, OAuth2 Client, Spring Data JPA, Validation, Java Mail Sender, Spring Data Redis, MySQL Driver (KHÔNG dùng Lombok)
 
 Giải nén vào `projects/09-fullstack-user-management/backend/`. JJWT, Bucket4j, springdoc sẽ thêm tay ở Bước 3.
 
@@ -269,7 +268,7 @@ Phần `<dependencies>` đầy đủ:
     </dependency>
     <dependency>
         <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-oauth2-client</artifactId>
+        <artifactId>spring-boot-starter-security-oauth2-client</artifactId>
     </dependency>
 
     <!-- JPA + Validation -->
@@ -299,10 +298,11 @@ Phần `<dependencies>` đầy đủ:
         <scope>runtime</scope>
     </dependency>
 
-    <!-- Lombok -->
+    <!-- DevTools (hot reload) -->
     <dependency>
-        <groupId>org.projectlombok</groupId>
-        <artifactId>lombok</artifactId>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-devtools</artifactId>
+        <scope>runtime</scope>
         <optional>true</optional>
     </dependency>
 
@@ -339,20 +339,27 @@ Phần `<dependencies>` đầy đủ:
         <version>2.6.0</version>
     </dependency>
 
-    <!-- Test -->
+    <!-- Test — Boot 4 tách test starter theo module -->
     <dependency>
         <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-test</artifactId>
+        <artifactId>spring-boot-starter-webmvc-test</artifactId>
         <scope>test</scope>
     </dependency>
     <dependency>
-        <groupId>org.springframework.security</groupId>
-        <artifactId>spring-security-test</artifactId>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-data-jpa-test</artifactId>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-security-test</artifactId>
         <scope>test</scope>
     </dependency>
 </dependencies>
 ```
 
+> **Lưu ý Spring Boot 4:** không dùng Lombok trong project này. Test starter bị tách module (`-webmvc-test`, `-data-jpa-test`, `-security-test`) thay cho `spring-boot-starter-test` gộp của Boot 3. OAuth2 client là `spring-boot-starter-security-oauth2-client` (Boot 3 tên là `spring-boot-starter-oauth2-client`).
+>
 > Version JJWT/Bucket4j/springdoc có thể chỉnh theo bản mới nhất lúc bạn làm. Nếu Boot BOM đã quản version springdoc thì bỏ `<version>`.
 
 ---
@@ -442,32 +449,16 @@ public class FullstackUserManagementApplication {
 
 # PHASE 1 — Core API (CRUD + search/filter/pagination + soft delete)
 
-## Bước 6 — Entity `Role.java`
+## Bước 6 — Enum `Role.java`
+
+Dùng **enum** đơn giản (mỗi user một role) — không dùng Role entity + many-to-many. Giá trị enum không có prefix `ROLE_`; prefix sẽ được thêm lúc build authorities (Bước 17).
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.entity;
 
-import jakarta.persistence.*;
-
-@Entity
-@Table(name = "roles")
-public class Role {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, unique = true, length = 50)
-    private String name;   // ROLE_USER, ROLE_ADMIN
-
-    protected Role() {}
-
-    public Role(String name) {
-        this.name = name;
-    }
-
-    public Long getId() { return id; }
-    public String getName() { return name; }
+public enum Role {
+    USER,
+    ADMIN
 }
 ```
 
@@ -485,8 +476,6 @@ import org.hibernate.annotations.SoftDeleteType;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
 
 @Entity
 @Table(name = "users")
@@ -501,7 +490,7 @@ public class User {
     private String email;
 
     @Column(length = 255)
-    private String password;          // null nếu chỉ social login
+    private String password;          // NULLABLE — null nếu chỉ social login
 
     @Column(name = "full_name", length = 150)
     private String fullName;
@@ -509,19 +498,15 @@ public class User {
     @Column(name = "avatar_url", length = 500)
     private String avatarUrl;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Role role = Role.USER;    // mỗi user một role
+
     @Column(name = "email_verified", nullable = false)
     private boolean emailVerified = false;
 
     @Column(nullable = false)
     private boolean enabled = true;
-
-    @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(
-        name = "user_roles",
-        joinColumns = @JoinColumn(name = "user_id"),
-        inverseJoinColumns = @JoinColumn(name = "role_id")
-    )
-    private Set<Role> roles = new HashSet<>();
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
@@ -540,7 +525,6 @@ public class User {
     }
 
     // ===== domain methods =====
-    public void addRole(Role role) { this.roles.add(role); }
     public void updateProfile(String fullName, String avatarUrl) {
         this.fullName = fullName;
         this.avatarUrl = avatarUrl;
@@ -555,35 +539,22 @@ public class User {
     public String getPassword() { return password; }
     public String getFullName() { return fullName; }
     public String getAvatarUrl() { return avatarUrl; }
+    public Role getRole() { return role; }
+    public void setRole(Role role) { this.role = role; }
     public boolean isEmailVerified() { return emailVerified; }
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
-    public Set<Role> getRoles() { return roles; }
-    public void setRoles(Set<Role> roles) { this.roles = roles; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 }
 ```
 
-> `@SoftDelete` tự thêm cột `deleted_at`. Mọi `find*`/`delete` của Hibernate tự lọc `deleted_at IS NULL`. Không cần viết gì thêm.
+> **`@SoftDelete`** tự quản cột `deleted_at`: `repository.delete(user)` chạy `UPDATE ... SET deleted_at = now()`, mọi query tự lọc `deleted_at IS NULL`. Vì Hibernate quản cột này, **không** khai báo thêm field `deletedAt` thủ công (sẽ xung đột cùng cột).
+>
+> Timestamps ở đây dùng `@CreationTimestamp`/`@UpdateTimestamp` (Hibernate tự set). Nếu thích, bạn có thể thay bằng `@PrePersist`/`@PreUpdate` thủ công — cả hai đều đúng.
 
-## Bước 8 — Repositories (Phase 1)
+## Bước 8 — Repository (Phase 1)
 
-`RoleRepository.java`:
-
-```java
-package com.maaitlunghau.__fullstack_user_management.repository;
-
-import com.maaitlunghau.__fullstack_user_management.entity.Role;
-import org.springframework.data.jpa.repository.JpaRepository;
-
-import java.util.Optional;
-
-public interface RoleRepository extends JpaRepository<Role, Long> {
-    Optional<Role> findByName(String name);
-}
-```
-
-`UserRepository.java` — thêm `JpaSpecificationExecutor` để filter động:
+Vì `Role` là enum (không phải entity), **không cần** `RoleRepository`. Chỉ cần `UserRepository` — thêm `JpaSpecificationExecutor` để filter động:
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.repository;
@@ -607,6 +578,7 @@ public interface UserRepository
 ```java
 package com.maaitlunghau.__fullstack_user_management.spec;
 
+import com.maaitlunghau.__fullstack_user_management.entity.Role;
 import com.maaitlunghau.__fullstack_user_management.entity.User;
 import org.springframework.data.jpa.domain.Specification;
 
@@ -626,12 +598,15 @@ public final class UserSpecs {
         };
     }
 
-    /** Lọc theo tên role (join bảng roles). */
+    /** Lọc theo role (enum). Param dạng "ADMIN"/"USER"; sai giá trị → bỏ qua tiêu chí. */
     public static Specification<User> hasRole(String roleName) {
         return (root, query, cb) -> {
             if (roleName == null || roleName.isBlank()) return null;
-            if (query != null) query.distinct(true);   // tránh nhân dòng khi join many-to-many
-            return cb.equal(root.join("roles").get("name"), roleName);
+            try {
+                return cb.equal(root.get("role"), Role.valueOf(roleName.toUpperCase()));
+            } catch (IllegalArgumentException ex) {
+                return cb.disjunction();   // role không hợp lệ → không khớp gì
+            }
         };
     }
 
@@ -682,12 +657,9 @@ public record ApiResponse<T>(int status, String message, T data, LocalDateTime t
 ```java
 package com.maaitlunghau.__fullstack_user_management.dto.response;
 
-import com.maaitlunghau.__fullstack_user_management.entity.Role;
 import com.maaitlunghau.__fullstack_user_management.entity.User;
 
 import java.time.LocalDateTime;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 public record UserResponse(
         Long id,
@@ -696,7 +668,7 @@ public record UserResponse(
         String avatarUrl,
         boolean emailVerified,
         boolean enabled,
-        Set<String> roles,
+        String role,
         LocalDateTime createdAt
 ) {
     public static UserResponse from(User user) {
@@ -707,7 +679,7 @@ public record UserResponse(
             user.getAvatarUrl(),
             user.isEmailVerified(),
             user.isEnabled(),
-            user.getRoles().stream().map(Role::getName).collect(Collectors.toSet()),
+            user.getRole().name(),
             user.getCreatedAt()
         );
     }
@@ -836,34 +808,40 @@ public class GlobalExceptionHandler {
 }
 ```
 
-## Bước 12 — `DataSeeder.java` (seed roles)
+## Bước 12 — `DataSeeder.java` (seed sẵn 1 admin)
+
+Vì `Role` là enum, không cần seed bảng role. Thay vào đó seed sẵn **một tài khoản admin** để test các endpoint ADMIN ngay.
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.config;
 
 import com.maaitlunghau.__fullstack_user_management.entity.Role;
-import com.maaitlunghau.__fullstack_user_management.repository.RoleRepository;
+import com.maaitlunghau.__fullstack_user_management.entity.User;
+import com.maaitlunghau.__fullstack_user_management.repository.UserRepository;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 @Component
 public class DataSeeder implements CommandLineRunner {
 
-    private final RoleRepository roleRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public DataSeeder(RoleRepository roleRepository) {
-        this.roleRepository = roleRepository;
+    public DataSeeder(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
     public void run(String... args) {
-        seedRole("ROLE_USER");
-        seedRole("ROLE_ADMIN");
-    }
-
-    private void seedRole(String name) {
-        roleRepository.findByName(name)
-            .orElseGet(() -> roleRepository.save(new Role(name)));
+        String adminEmail = "admin@usermgmt.local";
+        if (!userRepository.existsByEmail(adminEmail)) {
+            User admin = new User(adminEmail, passwordEncoder.encode("admin123"), "Administrator");
+            admin.setRole(Role.ADMIN);
+            admin.markEmailVerified();   // admin không cần verify email
+            userRepository.save(admin);
+        }
     }
 }
 ```
@@ -875,11 +853,9 @@ package com.maaitlunghau.__fullstack_user_management.service;
 
 import com.maaitlunghau.__fullstack_user_management.dto.request.CreateUserRequest;
 import com.maaitlunghau.__fullstack_user_management.dto.request.UpdateUserRequest;
-import com.maaitlunghau.__fullstack_user_management.entity.Role;
 import com.maaitlunghau.__fullstack_user_management.entity.User;
 import com.maaitlunghau.__fullstack_user_management.exception.DuplicateResourceException;
 import com.maaitlunghau.__fullstack_user_management.exception.ResourceNotFoundException;
-import com.maaitlunghau.__fullstack_user_management.repository.RoleRepository;
 import com.maaitlunghau.__fullstack_user_management.repository.UserRepository;
 import com.maaitlunghau.__fullstack_user_management.spec.UserSpecs;
 import org.springframework.data.domain.Page;
@@ -894,14 +870,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserService {
 
     private final UserRepository userRepository;
-    private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public UserService(UserRepository userRepository,
-                       RoleRepository roleRepository,
-                       PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
-        this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -927,9 +899,7 @@ public class UserService {
             throw new DuplicateResourceException("Email đã tồn tại: " + request.email());
         }
         User user = new User(request.email(), passwordEncoder.encode(request.password()), request.fullName());
-        Role userRole = roleRepository.findByName("ROLE_USER")
-            .orElseThrow(() -> new ResourceNotFoundException("Role ROLE_USER chưa được seed"));
-        user.addRole(userRole);
+        // role mặc định USER đã set sẵn trong entity; không cần làm gì thêm
         return userRepository.save(user);
     }
 
@@ -1118,7 +1088,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import java.util.Collection;
-import java.util.stream.Collectors;
+import java.util.List;
 
 // đổi khai báo class:
 public class User implements UserDetails {
@@ -1128,10 +1098,8 @@ public class User implements UserDetails {
     // ===== UserDetails =====
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        // role đã có prefix ROLE_ nên hasRole('ADMIN') hoạt động
-        return roles.stream()
-            .map(r -> new SimpleGrantedAuthority(r.getName()))
-            .collect(Collectors.toSet());
+        // thêm prefix ROLE_ để hasRole('ADMIN') / hasRole('USER') hoạt động
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 
     @Override
@@ -1334,7 +1302,7 @@ public class JwtService {
         return Jwts.builder()
             .subject(user.getEmail())
             .id(UUID.randomUUID().toString())          // jti — dùng để blacklist
-            .claim("roles", user.getRoles().stream().map(r -> r.getName()).toList())
+            .claim("role", user.getRole().name())
             .issuedAt(now)
             .expiration(new Date(now.getTime() + accessExpiration))
             .signWith(key)
@@ -1826,7 +1794,6 @@ import java.util.UUID;
 public class AuthService {
 
     private final UserRepository userRepository;
-    private final RoleRepository roleRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final VerificationTokenRepository verificationTokenRepository;
     private final PasswordEncoder passwordEncoder;
@@ -1835,13 +1802,12 @@ public class AuthService {
     private final TokenBlacklist tokenBlacklist;
     private final EmailService emailService;
 
-    public AuthService(UserRepository userRepository, RoleRepository roleRepository,
+    public AuthService(UserRepository userRepository,
                        RefreshTokenRepository refreshTokenRepository,
                        VerificationTokenRepository verificationTokenRepository,
                        PasswordEncoder passwordEncoder, AuthenticationManager authenticationManager,
                        JwtService jwtService, TokenBlacklist tokenBlacklist, EmailService emailService) {
         this.userRepository = userRepository;
-        this.roleRepository = roleRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.verificationTokenRepository = verificationTokenRepository;
         this.passwordEncoder = passwordEncoder;
@@ -1857,9 +1823,7 @@ public class AuthService {
             throw new DuplicateResourceException("Email đã tồn tại: " + request.email());
         }
         User user = new User(request.email(), passwordEncoder.encode(request.password()), request.fullName());
-        Role userRole = roleRepository.findByName("ROLE_USER")
-            .orElseThrow(() -> new ResourceNotFoundException("Role ROLE_USER chưa seed"));
-        user.addRole(userRole);
+        // role mặc định USER đã set trong entity
         userRepository.save(user);
 
         String token = UUID.randomUUID().toString();
@@ -2121,7 +2085,7 @@ curl -X POST http://localhost:8081/api/auth/logout -H "Authorization: Bearer <AC
 curl http://localhost:8081/api/me -H "Authorization: Bearer <ACCESS>"
 ```
 
-> Muốn test endpoint ADMIN: vào phpMyAdmin thêm row `(user_id, role_id)` vào `user_roles` trỏ tới `ROLE_ADMIN`, hoặc seed sẵn 1 admin trong `DataSeeder`.
+> Test endpoint ADMIN: dùng tài khoản admin seed sẵn (`admin@usermgmt.local` / `admin123` — xem Bước 12). Login bằng nó để lấy token có role ADMIN. Hoặc vào phpMyAdmin đổi cột `role` của một user thành `ADMIN`.
 
 ✅ **Hết Phase 2.** Commit: `feat(user-management): JWT auth, refresh token, RBAC, email verification`.
 
@@ -2252,11 +2216,8 @@ public class OneTimeCodeStore {
 ```java
 package com.maaitlunghau.__fullstack_user_management.service;
 
-import com.maaitlunghau.__fullstack_user_management.entity.Role;
 import com.maaitlunghau.__fullstack_user_management.entity.SocialAccount;
 import com.maaitlunghau.__fullstack_user_management.entity.User;
-import com.maaitlunghau.__fullstack_user_management.exception.ResourceNotFoundException;
-import com.maaitlunghau.__fullstack_user_management.repository.RoleRepository;
 import com.maaitlunghau.__fullstack_user_management.repository.SocialAccountRepository;
 import com.maaitlunghau.__fullstack_user_management.repository.UserRepository;
 import org.springframework.stereotype.Service;
@@ -2267,13 +2228,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class SocialLoginService {
 
     private final UserRepository userRepository;
-    private final RoleRepository roleRepository;
     private final SocialAccountRepository socialAccountRepository;
 
-    public SocialLoginService(UserRepository userRepository, RoleRepository roleRepository,
+    public SocialLoginService(UserRepository userRepository,
                               SocialAccountRepository socialAccountRepository) {
         this.userRepository = userRepository;
-        this.roleRepository = roleRepository;
         this.socialAccountRepository = socialAccountRepository;
     }
 
@@ -2302,13 +2261,10 @@ public class SocialLoginService {
                         return user;
                     }
                 }
-                // 3. Tạo user mới (password null vì chỉ social)
+                // 3. Tạo user mới (password null vì chỉ social; role mặc định USER)
                 User user = new User(email, null, fullName);
                 user.updateProfile(fullName, avatarUrl);
                 if (emailVerified) user.markEmailVerified();
-                Role userRole = roleRepository.findByName("ROLE_USER")
-                    .orElseThrow(() -> new ResourceNotFoundException("Role ROLE_USER chưa seed"));
-                user.addRole(userRole);
                 userRepository.save(user);
                 socialAccountRepository.save(new SocialAccount(user, provider, providerUserId));
                 return user;
@@ -2867,7 +2823,7 @@ sequenceDiagram
 | | Project 06 | Project 09 |
 |---|---|---|
 | Auth | JWT email/password | JWT + Auth0 social (Hướng B hội tụ 1 token) |
-| Role | Enum đơn giản | Entity `Role` + many-to-many (RBAC thật) |
+| Role | Enum, kiểm tra thủ công | Enum + RBAC (`@EnableMethodSecurity`, `@PreAuthorize`, seed admin) |
 | User query | findAll | Specification: search + filter + pagination |
 | Xóa | Xóa cứng | Soft delete (`@SoftDelete`) |
 | Email | Không | Verification + password reset (MailHog) |
