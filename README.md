@@ -160,6 +160,8 @@ cd projects/02-ioc-and-di
 ./mvnw spring-boot:run
 ```
 
+> Chi tiết từng bước implement: [`docs/02-ioc-and-di.md`](docs/02-ioc-and-di.md)
+
 ---
 
 ### 03 · crud-rest-api — Spring MVC + Spring Data JPA
