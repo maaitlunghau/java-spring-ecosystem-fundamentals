@@ -230,6 +230,8 @@ cd projects/04-rest-api-jpa-mysql
 # API: http://localhost:8081/api/products
 ```
 
+> Chi tiết từng bước implement: [`docs/04-rest-api-jpa-mysql.md`](docs/04-rest-api-jpa-mysql.md)
+
 ---
 
 ### 05 · mvc-thymeleaf — Spring MVC + Thymeleaf (Server-side Rendering)
