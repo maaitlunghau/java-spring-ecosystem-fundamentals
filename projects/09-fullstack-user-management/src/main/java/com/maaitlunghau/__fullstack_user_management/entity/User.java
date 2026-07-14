@@ -34,14 +34,14 @@ public class User {
     private String email;
 
     @Column(name = "password", length = 100)
-    private String password;   // nullable — null nếu chỉ social login
+    private String password;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private Role role = Role.USER;
 
-    @Column(name = "email_verified", nullable = false)
-    private boolean emailVerified = false;
+    @Column(name = "is_email_verified", nullable = false)
+    private boolean isEmailVerified = false;
 
     @Column(name = "is_enable", nullable = false)
     private boolean isEnable = true;
@@ -71,7 +71,7 @@ public class User {
         String email, 
         String password, 
         Role role, 
-        boolean emailVerified, 
+        boolean isEmailVerified, 
         boolean isEnable
     ) 
     {
@@ -79,7 +79,7 @@ public class User {
         this.email = email;
         this.password = password;
         this.role = role;
-        this.emailVerified = emailVerified;
+        this.isEmailVerified = isEmailVerified;
         this.isEnable = isEnable;
     }
 
@@ -128,11 +128,11 @@ public class User {
     }
 
     public boolean isEmailVerified() {
-        return emailVerified;
+        return isEmailVerified;
     }
 
-    public void setEmailVerified(boolean emailVerified) {
-        this.emailVerified = emailVerified;
+    public void setEmailVerified(boolean isEmailVerified) {
+        this.isEmailVerified = isEmailVerified;
     }
 
     public boolean isEnable() {
@@ -165,8 +165,8 @@ public class User {
 
     @Override
     public String toString() {
-        return "User [id=" + id + ", fullName=" + fullName + ", email=" + email + ", role=" + role + ", emailVerified="
-                + emailVerified + ", isEnable=" + isEnable + ", createdAt=" + createdAt
+        return "User [id=" + id + ", fullName=" + fullName + ", email=" + email + ", role=" + role + ", isEmailVerified="
+                + isEmailVerified + ", isEnable=" + isEnable + ", createdAt=" + createdAt
                 + ", updatedAt=" + updatedAt + "]";
     }
 }
