@@ -11,6 +11,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
 
@@ -74,6 +75,13 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.badRequest()
             .body(ApiResponse.message(400, errors));
+    }
+
+    // Route không tồn tại → 404 (nếu không, catch-all bên dưới biến thành 500)
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResource(NoResourceFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ApiResponse.message(404, "Không tìm thấy tài nguyên: " + ex.getResourcePath()));
     }
 
     @ExceptionHandler(Exception.class)
