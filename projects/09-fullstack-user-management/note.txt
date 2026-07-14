@@ -36,3 +36,5 @@ sequenceDiagram
         userRepository.delete(user);
     }
 => cần đổi lai thành lỗi 403 sẽ chính xác hơn 
+
+5. tìm hiểu tại sao soft delete lại là eager loading chứ ko phải là lazy loading
