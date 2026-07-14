@@ -2623,7 +2623,8 @@ public class SocialAccount {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    // @SoftDelete trên User buộc quan hệ to-one phải EAGER (Hibernate không cho LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
@@ -2641,6 +2642,7 @@ public class SocialAccount {
         this.providerUserId = providerUserId;
     }
 
+    public Long getId() { return id; }
     public User getUser() { return user; }
     public String getProvider() { return provider; }
     public String getProviderUserId() { return providerUserId; }
@@ -2664,23 +2666,24 @@ public interface SocialAccountRepository extends JpaRepository<SocialAccount, Lo
 
 ## Bước 37 — `OneTimeCodeStore.java` (Redis)
 
-Sau callback, ta không thể trả JWT thẳng cho SPA (redirect là GET của browser). Giải pháp: sinh **một code ngẫu nhiên dùng một lần**, lưu Redis (TTL 60s) map tới cặp token, redirect về FE kèm code, FE gọi API đổi lấy token.
+Sau callback, ta không thể trả JWT thẳng cho SPA (redirect là GET của browser, để token trên URL rất không an toàn). Giải pháp: sinh **một code ngẫu nhiên dùng một lần**, lưu Redis (TTL 60s), redirect FE kèm code, FE POST code để đổi lấy JWT.
+
+> **Cố ý chỉ lưu `userId`** (không lưu token) — token được phát lúc exchange. Giữ nguyên nguyên tắc không để refresh token thô nằm trong Redis (đã hash trong DB rồi thì đừng để bản thô ở nơi khác).
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.service;
 
-import com.maaitlunghau.__fullstack_user_management.dto.response.AuthResponse;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.stereotype.Service;
-
 import java.time.Duration;
 import java.util.UUID;
+
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Service;
 
 @Service
 public class OneTimeCodeStore {
 
     private static final String PREFIX = "otc:";
-    private static final String SEP = "::";
+    private static final Duration TTL = Duration.ofSeconds(60);
 
     private final StringRedisTemplate redis;
 
@@ -2688,22 +2691,17 @@ public class OneTimeCodeStore {
         this.redis = redis;
     }
 
-    /** Lưu cặp token dưới 1 code, trả code cho FE. */
-    public String store(AuthResponse tokens) {
+    /** Sinh code cho userId, trả code để redirect về FE. */
+    public String issue(Long userId) {
         String code = UUID.randomUUID().toString();
-        String value = tokens.accessToken() + SEP + tokens.refreshToken();
-        redis.opsForValue().set(PREFIX + code, value, Duration.ofSeconds(60));
+        redis.opsForValue().set(PREFIX + code, userId.toString(), TTL);
         return code;
     }
 
-    /** Đổi code lấy token — xóa ngay (dùng một lần). Trả null nếu không hợp lệ/hết hạn. */
-    public AuthResponse consume(String code) {
-        String key = PREFIX + code;
-        String value = redis.opsForValue().get(key);
-        if (value == null) return null;
-        redis.delete(key);
-        String[] parts = value.split(SEP);
-        return new AuthResponse(parts[0], parts[1]);
+    /** Đổi code lấy userId — GETDEL nguyên tử (dùng một lần). null nếu không hợp lệ/hết hạn. */
+    public Long consume(String code) {
+        String value = redis.opsForValue().getAndDelete(PREFIX + code);
+        return value == null ? null : Long.valueOf(value);
     }
 }
 ```
@@ -2777,13 +2775,8 @@ Auth0 trả về `OidcUser`. Ta lấy claim, gọi `SocialLoginService`, phát J
 ```java
 package com.maaitlunghau.__fullstack_user_management.security;
 
-import com.maaitlunghau.__fullstack_user_management.dto.response.AuthResponse;
-import com.maaitlunghau.__fullstack_user_management.entity.User;
-import com.maaitlunghau.__fullstack_user_management.service.AuthService;
-import com.maaitlunghau.__fullstack_user_management.service.OneTimeCodeStore;
-import com.maaitlunghau.__fullstack_user_management.service.SocialLoginService;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
@@ -2791,21 +2784,24 @@ import org.springframework.security.web.authentication.SimpleUrlAuthenticationSu
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import java.io.IOException;
+import com.maaitlunghau.__fullstack_user_management.entity.User;
+import com.maaitlunghau.__fullstack_user_management.service.OneTimeCodeStore;
+import com.maaitlunghau.__fullstack_user_management.service.SocialLoginService;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 @Component
 public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
 
     private final SocialLoginService socialLoginService;
-    private final AuthService authService;
     private final OneTimeCodeStore oneTimeCodeStore;
     private final String frontendUrl;
 
-    public OAuth2LoginSuccessHandler(SocialLoginService socialLoginService, AuthService authService,
+    public OAuth2LoginSuccessHandler(SocialLoginService socialLoginService,
                                      OneTimeCodeStore oneTimeCodeStore,
                                      @Value("${app.frontend-url}") String frontendUrl) {
         this.socialLoginService = socialLoginService;
-        this.authService = authService;
         this.oneTimeCodeStore = oneTimeCodeStore;
         this.frontendUrl = frontendUrl;
     }
@@ -2824,8 +2820,7 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
         String avatar = oidc.getPicture();
 
         User user = socialLoginService.findOrCreate(provider, sub, email, emailVerified, fullName, avatar);
-        AuthResponse tokens = authService.issueTokensFor(user);
-        String code = oneTimeCodeStore.store(tokens);
+        String code = oneTimeCodeStore.issue(user.getId());   // token phát lúc exchange, không phải ở đây
 
         String redirect = UriComponentsBuilder.fromUriString(frontendUrl + "/oauth/callback")
             .queryParam("code", code)
@@ -2838,69 +2833,103 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
 
 ## Bước 40 — `OAuth2ExchangeController.java` (FE đổi code lấy JWT)
 
+Đổi code → userId → phát session mới (token bind đúng thiết bị đang gọi API). Dùng `RequestUtils` (Bước 30) để lấy IP/User-Agent.
+
 ```java
 package com.maaitlunghau.__fullstack_user_management.controller;
 
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
 import com.maaitlunghau.__fullstack_user_management.dto.response.AuthResponse;
+import com.maaitlunghau.__fullstack_user_management.entity.User;
 import com.maaitlunghau.__fullstack_user_management.exception.BadRequestException;
+import com.maaitlunghau.__fullstack_user_management.repository.UserRepository;
+import com.maaitlunghau.__fullstack_user_management.service.AuthService;
 import com.maaitlunghau.__fullstack_user_management.service.OneTimeCodeStore;
-import org.springframework.web.bind.annotation.*;
+import com.maaitlunghau.__fullstack_user_management.util.RequestUtils;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping("/api/auth")
 public class OAuth2ExchangeController {
 
     private final OneTimeCodeStore oneTimeCodeStore;
+    private final UserRepository userRepository;
+    private final AuthService authService;
 
-    public OAuth2ExchangeController(OneTimeCodeStore oneTimeCodeStore) {
+    public OAuth2ExchangeController(OneTimeCodeStore oneTimeCodeStore,
+                                    UserRepository userRepository,
+                                    AuthService authService) {
         this.oneTimeCodeStore = oneTimeCodeStore;
+        this.userRepository = userRepository;
+        this.authService = authService;
     }
 
-    @PostMapping("/exchange")
-    public ApiResponse<AuthResponse> exchange(@RequestParam String code) {
-        AuthResponse tokens = oneTimeCodeStore.consume(code);
-        if (tokens == null) {
+    @PostMapping("/oauth2/exchange")
+    public ApiResponse<AuthResponse> exchange(@RequestParam String code, HttpServletRequest request) {
+        Long userId = oneTimeCodeStore.consume(code);
+        if (userId == null) {
             throw new BadRequestException("Code không hợp lệ hoặc đã hết hạn");
         }
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new BadRequestException("User không tồn tại"));
+
+        AuthResponse tokens = authService.issueNewSession(
+            user, RequestUtils.clientIp(request), RequestUtils.userAgent(request));
         return ApiResponse.ok("Social login thành công", tokens);
     }
 }
 ```
 
-## Bước 41 — Cập nhật `SecurityConfig` để bật OAuth2 Login
+> **`AuthService.issueNewSession(user, ip, ua)`** (Bước 29) — public, mở phiên mới + phát access/refresh, dùng chung cho login thường và social. **`RequestUtils`** (Bước 30) — util static `clientIp`/`userAgent` tách ra dùng chung cho `AuthController` + controller này.
 
-Thêm `oauth2Login` vào filter chain đã có ở Bước 26. Inject thêm `OAuth2LoginSuccessHandler`.
+## Bước 41 — Cập nhật `SecurityConfig` để bật OAuth2 Login (có điều kiện)
+
+Bật `oauth2Login` **chỉ khi đã cấu hình Auth0** — để app vẫn chạy Phase 1-2 khi chưa có tenant. Kiểm tra qua `ObjectProvider<ClientRegistrationRepository>` (bean này chỉ tồn tại khi có `spring.security.oauth2.client.registration.*`). Giữ nguyên phân quyền `/api/users` ở method-level (`@PreAuthorize`, Bước 32 — **không** thêm lại rule URL).
 
 ```java
 // Thêm field + constructor param:
 private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
+private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepository;
 
-// Trong filterChain(...), cập nhật authorizeHttpRequests + thêm oauth2Login:
-return http
-    .csrf(AbstractHttpConfigurer::disable)
-    .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-    .authorizeHttpRequests(auth -> auth
-        .requestMatchers(
-            "/api/auth/**",
-            "/oauth2/**", "/login/**",          // cho phép flow OAuth2 khởi tạo + callback
-            "/swagger-ui/**", "/v3/api-docs/**"
-        ).permitAll()
-        .requestMatchers("/api/users/**").hasRole("ADMIN")
-        .anyRequest().authenticated()
-    )
-    .exceptionHandling(e -> e
-        .authenticationEntryPoint(authenticationEntryPoint)
-        .accessDeniedHandler(accessDeniedHandler)
-    )
-    .oauth2Login(oauth -> oauth
-        .successHandler(oAuth2LoginSuccessHandler)   // ⭐ phát JWT nội bộ thay vì tạo session
-    )
-    .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-    .build();
+@Bean
+SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    boolean oauth2Enabled = clientRegistrationRepository.getIfAvailable() != null;
+
+    http
+        .csrf(AbstractHttpConfigurer::disable)
+        // OAuth2 authorization code cần session lưu tạm state/nonce → IF_REQUIRED khi bật OAuth2.
+        // Chưa bật thì giữ STATELESS thuần cho API.
+        .sessionManagement(s -> s.sessionCreationPolicy(
+            oauth2Enabled ? SessionCreationPolicy.IF_REQUIRED : SessionCreationPolicy.STATELESS))
+        .authorizeHttpRequests(auth -> auth
+            .requestMatchers(
+                "/api/auth/**",                       // gồm cả /api/auth/oauth2/exchange
+                "/oauth2/**", "/login/**",            // flow OAuth2 khởi tạo + callback
+                "/swagger-ui/**", "/v3/api-docs/**"
+            ).permitAll()
+            // /api/users/** phân quyền ở method-level bằng @PreAuthorize
+            .anyRequest().authenticated()
+        )
+        .exceptionHandling(e -> e
+            .authenticationEntryPoint(authenticationEntryPoint)
+            .accessDeniedHandler(accessDeniedHandler)
+        )
+        .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+    if (oauth2Enabled) {
+        http.oauth2Login(oauth -> oauth.successHandler(oAuth2LoginSuccessHandler));
+    }
+    return http.build();
+}
 ```
 
-> **Về SessionCreationPolicy STATELESS + oauth2Login:** flow OAuth2 authorization code cần lưu tạm `state`/`nonce` giữa các redirect. Với STATELESS, Spring dùng cookie-based repository cho phần này nên vẫn chạy. Nếu gặp lỗi "authorization_request_not_found", đổi policy sang `IF_REQUIRED` cho riêng đường dẫn OAuth2, hoặc để mặc định (không set STATELESS) — vì JWT filter vẫn tự xác thực API không phụ thuộc session.
+> **STATELESS + oauth2Login:** flow authorization code cần lưu tạm `state`/`nonce` giữa các redirect (mặc định dùng HttpSession). Với STATELESS thuần sẽ lỗi `authorization_request_not_found`. Ta dùng `IF_REQUIRED` khi bật OAuth2 — session chỉ tạo trong lúc handshake, còn API vẫn xác thực bằng JWT từng request. (Muốn giữ API tuyệt đối stateless: viết cookie-based `AuthorizationRequestRepository` hoặc tách 2 SecurityFilterChain — nâng cao, không bắt buộc.)
 
 ## Bước 42 — Chạy & test Phase 3
 
@@ -2916,8 +2945,8 @@ Mở trình duyệt: http://localhost:8081/oauth2/authorization/auth0
 - Vì FE chưa chạy, copy `code` từ URL, rồi đổi lấy token:
 
 ```bash
-curl -X POST "http://localhost:8081/api/auth/exchange?code=<CODE_TỪ_URL>"
-# → { "data": { "accessToken":"...", "refreshToken":"..." } }
+curl -X POST "http://localhost:8081/api/auth/oauth2/exchange?code=<CODE_TỪ_URL>"
+# → { "data": { "accessToken":"...", "refreshToken":"...", "tokenType":"Bearer", "expiresIn":900 } }
 
 # Dùng access token gọi /api/me
 curl http://localhost:8081/api/me -H "Authorization: Bearer <ACCESS>"
