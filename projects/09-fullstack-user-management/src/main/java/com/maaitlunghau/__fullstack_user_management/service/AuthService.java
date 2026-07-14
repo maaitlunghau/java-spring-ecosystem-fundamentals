@@ -123,9 +123,15 @@ public class AuthService {
             throw new BadRequestException("Email chưa được xác thực. Kiểm tra hộp thư để kích hoạt.");
         }
 
-        // Mỗi lần login mở một PHIÊN mới (hỗ trợ đăng nhập nhiều thiết bị)
-        String sessionId = UUID.randomUUID().toString();
-        return issueTokens(user, sessionId, ipAddress, userAgent);
+        return issueNewSession(user, ipAddress, userAgent);
+    }
+
+    /**
+     * Mở một PHIÊN mới (sessionId mới) và phát access + refresh token.
+     * Dùng chung cho login thường và social login (Phase 3).
+     */
+    public AuthResponse issueNewSession(User user, String ipAddress, String userAgent) {
+        return issueTokens(user, UUID.randomUUID().toString(), ipAddress, userAgent);
     }
 
     // ===================== REFRESH (rotation + reuse detection) =====================
