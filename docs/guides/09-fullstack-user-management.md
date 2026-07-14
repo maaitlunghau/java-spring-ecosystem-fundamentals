@@ -3126,11 +3126,22 @@ public ResponseEntity<ApiResponse<Void>> handleNoResource(NoResourceFoundExcepti
 
 ## Bước 46 — Swagger / OpenAPI
 
-Đã thêm `springdoc-openapi-starter-webmvc-ui` (Bước 3) và permit `/swagger-ui/**`, `/v3/api-docs/**` (Bước 26). Chạy app rồi mở:
+> **Thêm dependency** vào `pom.xml` (project init chưa có). **`2.8.9` chạy được với Spring Boot 4 / Jackson 3** (đã kiểm chứng: `/v3/api-docs` trả OpenAPI 3.1.0):
+> ```xml
+> <dependency>
+>     <groupId>org.springdoc</groupId>
+>     <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+>     <version>2.8.9</version>
+> </dependency>
+> ```
 
+Permit các path Swagger trong `SecurityConfig` — lưu ý `/swagger-ui/**` **không** khớp `/swagger-ui.html` nên phải thêm riêng:
+
+```java
+.requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
 ```
-http://localhost:8081/swagger-ui.html
-```
+
+Chạy app rồi mở `http://localhost:8081/swagger-ui.html` (redirect sang `/swagger-ui/index.html`).
 
 Thêm cấu hình JWT cho Swagger để "Authorize" bằng Bearer token — `config/OpenApiConfig.java`:
 

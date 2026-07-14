@@ -67,7 +67,7 @@ public class SecurityConfig {
                 .requestMatchers(
                     "/api/auth/**",                       // đăng ký / login / refresh / verify / exchange
                     "/oauth2/**", "/login/**",            // flow OAuth2 khởi tạo + callback
-                    "/swagger-ui/**", "/v3/api-docs/**"   // API docs (khi thêm springdoc)
+                    "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**"   // Swagger / OpenAPI
                 ).permitAll()
                 // /api/users/** phân quyền ở method-level bằng @PreAuthorize (xem UserController)
                 .anyRequest().authenticated()
