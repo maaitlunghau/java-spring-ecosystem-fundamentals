@@ -83,6 +83,12 @@ public class User {
         this.isEnabled = isEnabled;
     }
 
+    public User(String email, String password, String fullName) {
+        this.email = email;
+        this.password = password;
+        this.fullName = fullName;
+    }
+
     public Long getId() {
         return id;
     }
