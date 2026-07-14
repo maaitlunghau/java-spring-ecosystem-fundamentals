@@ -1293,26 +1293,46 @@ public class RefreshToken {
 
 ## Bước 19 — Entity `VerificationToken.java`
 
-Dùng chung cho **email verify** và **password reset** (phân biệt bằng `type`).
+Token dùng-một-lần gửi qua link email, dùng chung cho **email verify** và **password reset** (phân biệt bằng `type`). Áp cùng chuẩn bảo mật như RefreshToken:
+
+| Kỹ thuật | Vì sao cần |
+|---|---|
+| **Hash token** (`tokenHash` = SHA-256) | Token `PASSWORD_RESET` đổi được mật khẩu bất kỳ ai → phải hash như password, DB lộ cũng vô hại. |
+| **Đánh dấu đã dùng** (`isUsed` + `usedAt`) | Giữ audit + chống dùng lại token — thay vì `delete()` làm mất dấu vết. |
+| **`createdAt`** | Audit + mở đường rate-limit "1 giờ chỉ xin reset N lần". |
+
+> **Khác RefreshToken:** đây là token dùng-một-lần trong link email, KHÔNG phải phiên đăng nhập dài → không cần `sessionId` / rotation / device binding.
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.entity;
 
-import jakarta.persistence.*;
 import java.time.Instant;
 
+import jakarta.persistence.*;
+
 @Entity
-@Table(name = "verification_tokens")
+@Table(name = "verification_tokens", indexes = {
+    @Index(name = "idx_verification_token_hash", columnList = "token_hash"),
+    @Index(name = "idx_verification_user", columnList = "user_id")
+})
 public class VerificationToken {
 
-    public enum Type { EMAIL_VERIFY, PASSWORD_RESET }
+    /** Phân biệt mục đích token — dùng chung một bảng. */
+    public enum Type {
+        EMAIL_VERIFY,     // kích hoạt tài khoản sau khi đăng ký
+        PASSWORD_RESET    // đặt lại mật khẩu khi quên
+    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 100)
-    private String token;
+    /**
+     * SHA-256(token) dạng hex 64 ký tự — KHÔNG lưu token gốc.
+     * Lúc verify: hash token trong link rồi tra theo hash.
+     */
+    @Column(name = "token_hash", nullable = false, unique = true, length = 64)
+    private String tokenHash;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
@@ -1322,26 +1342,55 @@ public class VerificationToken {
     @Column(nullable = false, length = 30)
     private Type type;
 
+    /** Đánh dấu đã dùng thay vì xóa → giữ audit + chống dùng lại. */
+    @Column(name = "is_used", nullable = false)
+    private boolean isUsed = false;
+
+    /** Mốc token ĐƯỢC dùng (quá khứ) — null nếu chưa dùng. */
+    @Column(name = "used_at")
+    private Instant usedAt;
+
+    /** Mốc token ĐƯỢC tạo (quá khứ) — set tự động ở @PrePersist. */
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    /** Mốc token SẼ hết hạn (tương lai) — expiresAt, không phải expiredAt. */
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
+    @PrePersist
+    protected void onCreate() { this.createdAt = Instant.now(); }
+
     protected VerificationToken() {}
 
-    public VerificationToken(String token, User user, Type type, Instant expiresAt) {
-        this.token = token;
+    public VerificationToken(String tokenHash, User user, Type type, Instant expiresAt) {
+        this.tokenHash = tokenHash;
         this.user = user;
         this.type = type;
         this.expiresAt = expiresAt;
     }
 
+    // ===== domain methods =====
+    public void markUsed() {
+        this.isUsed = true;
+        this.usedAt = Instant.now();
+    }
     public boolean isExpired() { return Instant.now().isAfter(expiresAt); }
+    public boolean isUsable()  { return !isUsed && !isExpired(); }   // hợp lệ để verify/reset
 
+    // ===== getters =====
     public Long getId() { return id; }
-    public String getToken() { return token; }
+    public String getTokenHash() { return tokenHash; }
     public User getUser() { return user; }
     public Type getType() { return type; }
+    public boolean isUsed() { return isUsed; }
+    public Instant getUsedAt() { return usedAt; }
+    public Instant getCreatedAt() { return createdAt; }
+    public Instant getExpiresAt() { return expiresAt; }
 }
 ```
+
+> Các bước sau (`AuthService`) sẽ dùng: hàm `sha256(token)` hash trước khi tra cứu; và đổi `delete(vt)` → `vt.markUsed()` trong `verifyEmail`/`resetPassword`. Sẽ đồng bộ chi tiết khi làm tới.
 
 ## Bước 20 — Repositories mới
 
