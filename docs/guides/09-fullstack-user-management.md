@@ -788,6 +788,10 @@ package com.maaitlunghau.__fullstack_user_management.exception;
 import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -815,6 +819,36 @@ public class GlobalExceptionHandler {
             .body(ApiResponse.message(400, ex.getMessage()));
     }
 
+    // ===== Lỗi xác thực (Phase 2 — login) =====
+
+    // Sai email/mật khẩu → 401 (thông báo chung, không lộ email nào tồn tại)
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBadCredentials(BadCredentialsException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(ApiResponse.message(401, "Email hoặc mật khẩu không đúng"));
+    }
+
+    // Tài khoản bị vô hiệu hoá (isEnabled = false) → 403
+    @ExceptionHandler(DisabledException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDisabled(DisabledException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(ApiResponse.message(403, "Tài khoản đã bị vô hiệu hoá"));
+    }
+
+    // Lỗi xác thực khác → 401 (fallback, tránh rơi vào catch-all 500)
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAuthentication(AuthenticationException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(ApiResponse.message(401, "Xác thực thất bại"));
+    }
+
+    // Không đủ quyền từ @PreAuthorize (Bước 32) → 403, nếu không sẽ bị catch-all nuốt thành 500
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(ApiResponse.message(403, "Access denied — insufficient permission"));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
         String errors = ex.getBindingResult().getFieldErrors().stream()
@@ -831,6 +865,8 @@ public class GlobalExceptionHandler {
     }
 }
 ```
+
+> Ba handler `BadCredentialsException` / `DisabledException` / `AuthenticationException` phục vụ flow login ở Phase 2 — nếu đang làm Phase 1 có thể thêm sau khi tới Bước 29.
 
 ## Bước 12 — `DataSeeder.java` (seed sẵn 1 admin)
 
@@ -1146,75 +1182,197 @@ public class User implements UserDetails {
 
 ## Bước 18 — Entity `RefreshToken.java`
 
+Refresh token sống lâu (7 ngày) và **đổi được thành access token** → nó mạnh ngang password. Vì vậy entity này làm ở mức **production-grade**, không chỉ "đủ chạy":
+
+| Kỹ thuật | Vì sao cần |
+|---|---|
+| **Hash token** (`tokenHash` = SHA-256) | Không lưu token gốc — DB bị lộ cũng không dùng được (giống hash password). |
+| **Rotation** (`replacedByTokenHash`) | Mỗi lần refresh cấp token mới, thu hồi token cũ → token chỉ dùng 1 lần. |
+| **Reuse detection** (`sessionId`) | Token đã revoked mà bị dùng lại = bị đánh cắp → thu hồi cả họ token cùng session. |
+| **Audit** (`revokedReason`, `revokedAt`, `createdAt`) | Điều tra sự cố: vì sao/khi nào token bị thu hồi. |
+| **Device binding** (`ipAddress`, `userAgent`) | UI "các thiết bị đang đăng nhập" + phát hiện bất thường. |
+
+> **Đặt tên đúng nghĩa để tránh sai logic:** `expiresAt` (hạn *sẽ* hết — tương lai) chứ không phải `expiredAt` (hàm ý *đã* hết). Ngược lại `revokedAt`/`createdAt` là mốc sự kiện *đã* xảy ra nên dùng `-edAt`.
+
 ```java
 package com.maaitlunghau.__fullstack_user_management.entity;
 
-import jakarta.persistence.*;
 import java.time.Instant;
 
+import jakarta.persistence.*;
+
 @Entity
-@Table(name = "refresh_tokens")
+@Table(name = "refresh_tokens", indexes = {
+    // Index cho các cột hay tra cứu → query nhanh khi bảng lớn
+    @Index(name = "idx_refresh_token_hash", columnList = "token_hash"),
+    @Index(name = "idx_refresh_user", columnList = "user_id"),
+    @Index(name = "idx_refresh_session", columnList = "session_id")
+})
 public class RefreshToken {
+
+    /** Lý do token bị thu hồi — phục vụ audit/điều tra sự cố. */
+    public enum RevokedReason {
+        LOGOUT,             // user chủ động logout
+        ROTATED,            // bị thay bằng token mới khi refresh (vòng đời bình thường)
+        REUSE_DETECTED,     // token cũ bị dùng lại → nghi bị đánh cắp
+        PASSWORD_CHANGED,   // đổi/reset mật khẩu → buộc đăng nhập lại
+        ADMIN_REVOKED       // admin thu hồi thủ công
+    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 1000)
-    private String token;
+    /**
+     * SHA-256(token) dạng hex 64 ký tự — KHÔNG lưu token gốc.
+     * Lúc refresh: hash token client gửi lên rồi tra theo hash.
+     */
+    @Column(name = "token_hash", nullable = false, unique = true, length = 64)
+    private String tokenHash;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    // @SoftDelete trên User buộc quan hệ to-one phải EAGER (Hibernate không cho LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(nullable = false)
-    private boolean revoked = false;
+    /**
+     * ID nhóm mọi token thuộc CÙNG một phiên đăng nhập (sinh lúc login, giữ nguyên
+     * qua các lần rotation). Bị đánh cắp → thu hồi cả họ token theo sessionId này.
+     */
+    @Column(name = "session_id", nullable = false, length = 36)
+    private String sessionId;
 
+    @Column(name = "is_revoked", nullable = false)
+    private boolean isRevoked = false;
+
+    /** Mốc token BỊ thu hồi (quá khứ) — null nếu còn hiệu lực. */
+    @Column(name = "revoked_at")
+    private Instant revokedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "revoked_reason", length = 30)
+    private RevokedReason revokedReason;
+
+    /** Vết rotation: hash của token đã THAY THẾ token này (lần theo chuỗi rotation). */
+    @Column(name = "replaced_by_token_hash", length = 64)
+    private String replacedByTokenHash;
+
+    /** IP lúc cấp token — phát hiện bất thường. */
+    @Column(name = "ip_address", length = 45)   // 45 ký tự đủ chứa cả IPv6
+    private String ipAddress;
+
+    /** Trình duyệt/thiết bị — phục vụ UI "các thiết bị đang đăng nhập". */
+    @Column(name = "user_agent", length = 512)
+    private String userAgent;
+
+    /** Mốc token ĐƯỢC tạo (quá khứ) — set tự động ở @PrePersist. */
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    /** Mốc token SẼ hết hạn (tương lai) — expiresAt, không phải expiredAt. */
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
-    protected RefreshToken() {}
-
-    public RefreshToken(String token, User user, Instant expiresAt) {
-        this.token = token;
-        this.user = user;
-        this.expiresAt = expiresAt;
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = Instant.now();
     }
 
-    public void revoke() { this.revoked = true; }
+    protected RefreshToken() {}
 
+    public RefreshToken(String tokenHash, User user, String sessionId,
+                        Instant expiresAt, String ipAddress, String userAgent) {
+        this.tokenHash = tokenHash;
+        this.user = user;
+        this.sessionId = sessionId;
+        this.expiresAt = expiresAt;
+        this.ipAddress = ipAddress;
+        this.userAgent = userAgent;
+    }
+
+    // ===== domain methods =====
+
+    /** Thu hồi token kèm lý do (ghi lại thời điểm để audit). */
+    public void revoke(RevokedReason reason) {
+        this.isRevoked = true;
+        this.revokedReason = reason;
+        this.revokedAt = Instant.now();
+    }
+
+    /** Đánh dấu token này đã bị thay bằng token mới (khi rotation lúc refresh). */
+    public void rotatedTo(String newTokenHash) {
+        this.replacedByTokenHash = newTokenHash;
+        revoke(RevokedReason.ROTATED);
+    }
+
+    public boolean isExpired() { return Instant.now().isAfter(expiresAt); }
+
+    /** true nếu còn hợp lệ để refresh (chưa thu hồi VÀ chưa hết hạn). */
+    public boolean isActive() { return !isRevoked && !isExpired(); }
+
+    // ===== getters =====
     public Long getId() { return id; }
-    public String getToken() { return token; }
+    public String getTokenHash() { return tokenHash; }
     public User getUser() { return user; }
-    public boolean isRevoked() { return revoked; }
+    public String getSessionId() { return sessionId; }
+    public boolean isRevoked() { return isRevoked; }
+    public Instant getRevokedAt() { return revokedAt; }
+    public RevokedReason getRevokedReason() { return revokedReason; }
+    public String getReplacedByTokenHash() { return replacedByTokenHash; }
+    public String getIpAddress() { return ipAddress; }
+    public String getUserAgent() { return userAgent; }
+    public Instant getCreatedAt() { return createdAt; }
     public Instant getExpiresAt() { return expiresAt; }
 }
 ```
 
+> Các bước sau (`RefreshTokenRepository`, `JwtService`, `AuthService`) sẽ dùng: hàm `sha256(token)` để hash trước khi tra cứu; rotation cấp token mới + `oldToken.rotatedTo(newHash)`; nếu tra ra token đã `isRevoked` → thu hồi cả session (`REUSE_DETECTED`). Sẽ đồng bộ chi tiết khi làm tới.
+
 ## Bước 19 — Entity `VerificationToken.java`
 
-Dùng chung cho **email verify** và **password reset** (phân biệt bằng `type`).
+Token dùng-một-lần gửi qua link email, dùng chung cho **email verify** và **password reset** (phân biệt bằng `type`). Áp cùng chuẩn bảo mật như RefreshToken:
+
+| Kỹ thuật | Vì sao cần |
+|---|---|
+| **Hash token** (`tokenHash` = SHA-256) | Token `PASSWORD_RESET` đổi được mật khẩu bất kỳ ai → phải hash như password, DB lộ cũng vô hại. |
+| **Đánh dấu đã dùng** (`isUsed` + `usedAt`) | Giữ audit + chống dùng lại token — thay vì `delete()` làm mất dấu vết. |
+| **`createdAt`** | Audit + mở đường rate-limit "1 giờ chỉ xin reset N lần". |
+
+> **Khác RefreshToken:** đây là token dùng-một-lần trong link email, KHÔNG phải phiên đăng nhập dài → không cần `sessionId` / rotation / device binding.
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.entity;
 
-import jakarta.persistence.*;
 import java.time.Instant;
 
+import jakarta.persistence.*;
+
 @Entity
-@Table(name = "verification_tokens")
+@Table(name = "verification_tokens", indexes = {
+    @Index(name = "idx_verification_token_hash", columnList = "token_hash"),
+    @Index(name = "idx_verification_user", columnList = "user_id")
+})
 public class VerificationToken {
 
-    public enum Type { EMAIL_VERIFY, PASSWORD_RESET }
+    /** Phân biệt mục đích token — dùng chung một bảng. */
+    public enum Type {
+        EMAIL_VERIFY,     // kích hoạt tài khoản sau khi đăng ký
+        PASSWORD_RESET    // đặt lại mật khẩu khi quên
+    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 100)
-    private String token;
+    /**
+     * SHA-256(token) dạng hex 64 ký tự — KHÔNG lưu token gốc.
+     * Lúc verify: hash token trong link rồi tra theo hash.
+     */
+    @Column(name = "token_hash", nullable = false, unique = true, length = 64)
+    private String tokenHash;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    // @SoftDelete trên User buộc quan hệ to-one phải EAGER (Hibernate không cho LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
@@ -1222,50 +1380,87 @@ public class VerificationToken {
     @Column(nullable = false, length = 30)
     private Type type;
 
+    /** Đánh dấu đã dùng thay vì xóa → giữ audit + chống dùng lại. */
+    @Column(name = "is_used", nullable = false)
+    private boolean isUsed = false;
+
+    /** Mốc token ĐƯỢC dùng (quá khứ) — null nếu chưa dùng. */
+    @Column(name = "used_at")
+    private Instant usedAt;
+
+    /** Mốc token ĐƯỢC tạo (quá khứ) — set tự động ở @PrePersist. */
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    /** Mốc token SẼ hết hạn (tương lai) — expiresAt, không phải expiredAt. */
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
+    @PrePersist
+    protected void onCreate() { this.createdAt = Instant.now(); }
+
     protected VerificationToken() {}
 
-    public VerificationToken(String token, User user, Type type, Instant expiresAt) {
-        this.token = token;
+    public VerificationToken(String tokenHash, User user, Type type, Instant expiresAt) {
+        this.tokenHash = tokenHash;
         this.user = user;
         this.type = type;
         this.expiresAt = expiresAt;
     }
 
+    // ===== domain methods =====
+    public void markUsed() {
+        this.isUsed = true;
+        this.usedAt = Instant.now();
+    }
     public boolean isExpired() { return Instant.now().isAfter(expiresAt); }
+    public boolean isUsable()  { return !isUsed && !isExpired(); }   // hợp lệ để verify/reset
 
+    // ===== getters =====
     public Long getId() { return id; }
-    public String getToken() { return token; }
+    public String getTokenHash() { return tokenHash; }
     public User getUser() { return user; }
     public Type getType() { return type; }
+    public boolean isUsed() { return isUsed; }
+    public Instant getUsedAt() { return usedAt; }
+    public Instant getCreatedAt() { return createdAt; }
+    public Instant getExpiresAt() { return expiresAt; }
 }
 ```
 
+> Các bước sau (`AuthService`) sẽ dùng: hàm `sha256(token)` hash trước khi tra cứu; và đổi `delete(vt)` → `vt.markUsed()` trong `verifyEmail`/`resetPassword`. Sẽ đồng bộ chi tiết khi làm tới.
+
 ## Bước 20 — Repositories mới
+
+Vì entity lưu `tokenHash` (không phải token gốc), mọi tra cứu đều theo **`findByTokenHash`** — service sẽ hash token client gửi lên rồi mới tra.
+
+**Chỉ dùng derived method, không viết `@Query`.** Việc thu hồi hàng loạt (revoke session/user, vô hiệu token cũ) đặt ở **Service**: tra danh sách bằng derived method rồi gọi domain method (`revoke()` / `markUsed()`) — JPA dirty checking tự flush UPDATE.
+
+> **Vì sao không `@Modifying @Query` để UPDATE 1 câu?** Derived method không suy ra được UPDATE (chỉ `findBy`/`countBy`/`existsBy`/`deleteBy`), nên bulk update bắt buộc viết JPQL. Nhưng với project này số token mỗi user rất nhỏ (vài–vài chục), nên load + domain method **sạch hơn, tái dùng logic entity, tránh bẫy `clearAutomatically`/`@PreUpdate`** — chênh hiệu năng không đáng kể. Bulk `@Query` chỉ nên dành khi số dòng rất lớn.
 
 `RefreshTokenRepository.java`:
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.repository;
 
+import java.util.List;
+import java.util.Optional;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
 import com.maaitlunghau.__fullstack_user_management.entity.RefreshToken;
 import com.maaitlunghau.__fullstack_user_management.entity.User;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-
-import java.util.Optional;
 
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long> {
 
-    Optional<RefreshToken> findByToken(String token);
+    /** Tra token khi refresh — nhận vào là SHA-256(token), KHÔNG phải token gốc. */
+    Optional<RefreshToken> findByTokenHash(String tokenHash);
 
-    @Modifying
-    @Query("UPDATE RefreshToken rt SET rt.revoked = true WHERE rt.user = :user AND rt.revoked = false")
-    void revokeAllByUser(@Param("user") User user);
+    /** Các phiên đang hoạt động của user — dùng cho UI "thiết bị đăng nhập" + logout-everywhere. */
+    List<RefreshToken> findByUserAndIsRevokedFalse(User user);
+
+    /** Các token còn hiệu lực của MỘT PHIÊN — dùng cho reuse detection. */
+    List<RefreshToken> findBySessionIdAndIsRevokedFalse(String sessionId);
 }
 ```
 
@@ -1274,71 +1469,96 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
 ```java
 package com.maaitlunghau.__fullstack_user_management.repository;
 
-import com.maaitlunghau.__fullstack_user_management.entity.VerificationToken;
-import org.springframework.data.jpa.repository.JpaRepository;
-
+import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.maaitlunghau.__fullstack_user_management.entity.User;
+import com.maaitlunghau.__fullstack_user_management.entity.VerificationToken;
+
 public interface VerificationTokenRepository extends JpaRepository<VerificationToken, Long> {
-    Optional<VerificationToken> findByToken(String token);
+
+    /** Tra token khi verify/reset — nhận vào là SHA-256(token), KHÔNG phải token gốc. */
+    Optional<VerificationToken> findByTokenHash(String tokenHash);
+
+    /** Token cùng loại còn hiệu lực của user — vô hiệu trước khi phát token mới (chỉ link mới nhất dùng được). */
+    List<VerificationToken> findByUserAndTypeAndIsUsedFalse(User user, VerificationToken.Type type);
 }
 ```
 
+> Logic thu hồi (dùng các list trên) sẽ đặt ở `AuthService` — Bước 29. Ví dụ:
+> ```java
+> refreshTokenRepository.findBySessionIdAndIsRevokedFalse(sessionId)
+>     .forEach(token -> token.revoke(RevokedReason.REUSE_DETECTED));
+> ```
+
 ## Bước 21 — `JwtService.java`
 
-Sinh access token (có `jti`) + refresh token, và các hàm đọc claim. Dựa trên project 06, JJWT 0.13.0.
+Xử lý **2 loại token** với vòng đời khác nhau:
+
+| Loại | Dạng | Vì sao |
+|---|---|---|
+| **Access token** | JWT (có `jti`, `role`) | Stateless, mang sẵn claim, gửi kèm mỗi request. `jti` để blacklist khi logout. |
+| **Refresh / Verification** | Chuỗi **opaque** ngẫu nhiên (KHÔNG phải JWT) | Các token này luôn tra trong DB → JWT không thêm giá trị mà còn lộ claim. Lưu **SHA-256(token)**, không lưu token gốc. |
+
+Vì vậy JwtService cung cấp:
+- **Access token:** `generateAccessToken()` + các hàm đọc claim (`extractUsername`, `extractJti`, `remainingSeconds`, `isAccessTokenValid`).
+- **Opaque token:** `generateOpaqueToken()` (SecureRandom 256-bit) phát cho client, và `hashToken()` (SHA-256 hex) để hash trước khi lưu/tra cứu.
+
+> **Khác guide gốc:** refresh token không còn là JWT do `AuthService` (Bước 29) sẽ phát bằng `generateOpaqueToken()`, hash bằng `hashToken()` rồi lưu vào `RefreshToken.tokenHash`. Hạn refresh token tính ở AuthService (`Instant.now().plus(7 ngày)`), không cần trong JwtService. Ở codebase lớn có thể tách phần opaque+hash sang `TokenHasher` riêng cho đúng SRP.
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.service;
 
-import com.maaitlunghau.__fullstack_user_management.entity.User;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.time.Duration;
+import java.util.Base64;
+import java.util.Date;
+import java.util.HexFormat;
+import java.util.UUID;
+import java.util.function.Function;
+
+import javax.crypto.SecretKey;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.Date;
-import java.util.UUID;
-import java.util.function.Function;
+import com.maaitlunghau.__fullstack_user_management.entity.User;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 
 @Service
 public class JwtService {
 
     private final SecretKey key;
-    private final long accessExpiration;
-    private final long refreshExpiration;
+    private final long accessExpiration;             // ms
+    private final SecureRandom secureRandom = new SecureRandom();
 
     public JwtService(
             @Value("${app.jwt.secret}") String secret,
-            @Value("${app.jwt.access-token-expiration}") long accessExpiration,
-            @Value("${app.jwt.refresh-token-expiration}") long refreshExpiration) {
+            @Value("${app.jwt.access-token-expiration}") long accessExpiration) {
+        // HMAC-SHA key từ secret; secret phải đủ dài (>= 32 byte cho HS256)
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.accessExpiration = accessExpiration;
-        this.refreshExpiration = refreshExpiration;
     }
 
+    // ================= ACCESS TOKEN (JWT) =================
+
+    /** Phát access token JWT: subject = email, kèm jti (blacklist) + role. */
     public String generateAccessToken(User user) {
         Date now = new Date();
         return Jwts.builder()
             .subject(user.getEmail())
-            .id(UUID.randomUUID().toString())          // jti — dùng để blacklist
+            .id(UUID.randomUUID().toString())          // jti — để blacklist khi logout
             .claim("role", user.getRole().name())
             .issuedAt(now)
             .expiration(new Date(now.getTime() + accessExpiration))
-            .signWith(key)
-            .compact();
-    }
-
-    public String generateRefreshToken(User user) {
-        Date now = new Date();
-        return Jwts.builder()
-            .subject(user.getEmail())
-            .issuedAt(now)
-            .expiration(new Date(now.getTime() + refreshExpiration))
             .signWith(key)
             .compact();
     }
@@ -1361,7 +1581,8 @@ public class JwtService {
         return Math.max(0, Duration.ofMillis(millis).toSeconds());
     }
 
-    public boolean isValid(String token, String username) {
+    /** Token hợp lệ nếu đúng chủ sở hữu (email) và chưa hết hạn. */
+    public boolean isAccessTokenValid(String token, String username) {
         return extractUsername(token).equals(username) && !isExpired(token);
     }
 
@@ -1369,6 +1590,7 @@ public class JwtService {
         return extractExpiration(token).before(new Date());
     }
 
+    /** Parse + verify chữ ký; token hỏng/hết hạn/sai chữ ký sẽ ném JwtException. */
     private <T> T extractClaim(String token, Function<Claims, T> resolver) {
         Claims claims = Jwts.parser()
             .verifyWith(key)
@@ -1377,22 +1599,61 @@ public class JwtService {
             .getPayload();
         return resolver.apply(claims);
     }
+
+    // ============ OPAQUE TOKEN (refresh / verification) ============
+
+    /**
+     * Sinh token opaque ngẫu nhiên 256-bit, mã hoá base64url — giá trị TRẢ CHO client
+     * (qua response hoặc link email). KHÔNG lưu thẳng chuỗi này vào DB.
+     */
+    public String generateOpaqueToken() {
+        byte[] bytes = new byte[32];                 // 32 byte = 256-bit entropy
+        secureRandom.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    /**
+     * SHA-256(token) dạng hex 64 ký tự — hash token opaque TRƯỚC KHI lưu hoặc tra cứu.
+     * Token opaque entropy cao (không brute-force như password) nên chỉ cần hash nhanh
+     * 1 chiều, không cần BCrypt.
+     */
+    public String hashToken(String rawToken) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(rawToken.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 algorithm not available", e);
+        }
+    }
 }
 ```
 
 ## Bước 22 — `TokenBlacklist.java` (Redis — thu hồi tầng 1)
 
+Access token là JWT stateless → không tự thu hồi được. Khi logout, ta chặn theo `jti`: ghi vào Redis với TTL = thời gian token còn sống. Filter sẽ check jti trong blacklist trước khi cho qua. TTL hết → Redis tự xoá (đúng lúc token cũng hết hạn).
+
+> **Cần thêm dependency** `spring-boot-starter-data-redis` vào `pom.xml` (project init chưa có). Vì chỉ lưu String → String nên dùng thẳng `StringRedisTemplate` auto-config, **không cần `RedisConfig` riêng**. Chỉ khi lưu object phức tạp (cần serializer JSON) hoặc bật cache mới cần tạo `RedisConfig`.
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-redis</artifactId>
+</dependency>
+```
+
 ```java
 package com.maaitlunghau.__fullstack_user_management.service;
+
+import java.time.Duration;
 
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
-
 @Service
 public class TokenBlacklist {
 
+    // Namespace key trong Redis để tránh đụng key khác (one-time code, rate limit...)
     private static final String PREFIX = "blacklist:jti:";
 
     private final StringRedisTemplate redis;
@@ -1401,13 +1662,14 @@ public class TokenBlacklist {
         this.redis = redis;
     }
 
-    /** Blacklist jti với TTL = thời gian còn lại của access token → Redis tự dọn. */
+    /** Chặn một jti với TTL = số giây access token còn sống → Redis tự dọn khi hết hạn. */
     public void blacklist(String jti, long ttlSeconds) {
-        if (ttlSeconds > 0) {
+        if (jti != null && ttlSeconds > 0) {
             redis.opsForValue().set(PREFIX + jti, "1", Duration.ofSeconds(ttlSeconds));
         }
     }
 
+    /** true nếu jti đang bị chặn (token đã logout nhưng chưa hết hạn tự nhiên). */
     public boolean isBlacklisted(String jti) {
         return jti != null && Boolean.TRUE.equals(redis.hasKey(PREFIX + jti));
     }
@@ -1416,14 +1678,17 @@ public class TokenBlacklist {
 
 ## Bước 23 — `UserDetailsServiceImpl.java`
 
+Cầu nối giữa Spring Security và DB user. Spring gọi `loadUserByUsername()` khi cần xác thực (vd lúc login qua `AuthenticationManager`). Vì `User` đã `implements UserDetails` nên trả thẳng entity, không cần lớp adapter. "username" ở đây là **email** (`User.getUsername()` trả email).
+
 ```java
 package com.maaitlunghau.__fullstack_user_management.service;
 
-import com.maaitlunghau.__fullstack_user_management.repository.UserRepository;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
+
+import com.maaitlunghau.__fullstack_user_management.repository.UserRepository;
 
 @Service
 public class UserDetailsServiceImpl implements UserDetailsService {
@@ -1444,18 +1709,17 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
 ## Bước 24 — `JwtAuthenticationFilter.java`
 
-Intercept mỗi request: đọc `Authorization: Bearer <token>`, validate, check blacklist, set `SecurityContext`.
+Chạy **một lần mỗi request** (`OncePerRequestFilter`): đọc `Authorization: Bearer <token>`, validate, check blacklist, nạp danh tính vào `SecurityContext`.
+
+> **Nguyên tắc tách bạch:** filter chỉ **xác thực** — nếu không xác thực được, nó **không tự trả 401/403** mà để trống context rồi cho request đi tiếp. `SecurityConfig` sẽ để EntryPoint (401) / AccessDeniedHandler (403) quyết định.
+>
+> Dùng `jwtService.isAccessTokenValid(...)` (đã đổi tên từ `isValid` vì giờ có 2 loại token).
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.security;
 
-import com.maaitlunghau.__fullstack_user_management.service.JwtService;
-import com.maaitlunghau.__fullstack_user_management.service.TokenBlacklist;
-import io.jsonwebtoken.JwtException;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -1465,7 +1729,14 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import java.io.IOException;
+import com.maaitlunghau.__fullstack_user_management.service.JwtService;
+import com.maaitlunghau.__fullstack_user_management.service.TokenBlacklist;
+
+import io.jsonwebtoken.JwtException;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -1490,30 +1761,30 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String header = request.getHeader("Authorization");
         if (header == null || !header.startsWith("Bearer ")) {
-            filterChain.doFilter(request, response);   // không có token → để EntryPoint xử lý
+            filterChain.doFilter(request, response);   // không có token → để endpoint/EntryPoint xử lý
             return;
         }
 
-        String token = header.substring(7);
+        String token = header.substring(7);   // bỏ "Bearer "
         try {
             String username = jwtService.extractUsername(token);
             String jti = jwtService.extractJti(token);
 
+            // Chỉ xác thực khi: có username, context chưa có ai, và token chưa bị blacklist (logout)
             if (username != null
                     && SecurityContextHolder.getContext().getAuthentication() == null
                     && !tokenBlacklist.isBlacklisted(jti)) {
 
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-                if (jwtService.isValid(token, userDetails.getUsername())) {
-                    UsernamePasswordAuthenticationToken auth =
-                        new UsernamePasswordAuthenticationToken(
-                            userDetails, null, userDetails.getAuthorities());
+                if (jwtService.isAccessTokenValid(token, userDetails.getUsername())) {
+                    var auth = new UsernamePasswordAuthenticationToken(
+                        userDetails, null, userDetails.getAuthorities());
                     auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(auth);
                 }
             }
         } catch (JwtException | IllegalArgumentException ex) {
-            // token hỏng/hết hạn → không set context → EntryPoint trả 401
+            // token hỏng/hết hạn/sai chữ ký → không set context → EntryPoint trả 401
             SecurityContextHolder.clearContext();
         }
 
@@ -1524,28 +1795,40 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
 ## Bước 25 — Custom 401 / 403 handlers
 
-**Lưu ý Spring Boot 4 / Jackson 3:** dùng `tools.jackson.databind.ObjectMapper`.
+Hai handler này tự serialize JSON để trả lỗi thống nhất định dạng `ApiResponse`. Phân biệt:
+- **401** (`AuthenticationEntryPoint`) — *chưa biết bạn là ai*: không có token, hoặc token hỏng/hết hạn.
+- **403** (`AccessDeniedHandler`) — *biết rồi nhưng không đủ quyền*: vd USER gọi endpoint ADMIN.
+
+> **Lưu ý Boot 4 / Jackson 3:** `ObjectMapper` nằm ở package `tools.jackson.databind` (không phải `com.fasterxml.jackson`).
+>
+> **Nên inject `ObjectMapper` do Spring quản lý** (qua constructor) thay vì `new ObjectMapper()`. Vì `ApiResponse` có field `LocalDateTime timestamp` — mapper của Spring đã cấu hình serialize ngày dạng ISO-8601, còn mapper new thô có thể ra dạng array/số, lệch với các response khác của API.
 
 `security/CustomAuthenticationEntryPoint.java` — 401:
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.security;
 
-import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+
 import org.springframework.http.MediaType;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
+import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+
+    public CustomAuthenticationEntryPoint(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response,
@@ -1564,21 +1847,27 @@ public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint 
 ```java
 package com.maaitlunghau.__fullstack_user_management.security;
 
-import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
+import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class CustomAccessDeniedHandler implements AccessDeniedHandler {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+
+    public CustomAccessDeniedHandler(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @Override
     public void handle(HttpServletRequest request, HttpServletResponse response,
@@ -1594,14 +1883,19 @@ public class CustomAccessDeniedHandler implements AccessDeniedHandler {
 
 ## Bước 26 — `SecurityConfig.java`
 
-Thay class tạm ở Phase 1. Đây là bản Phase 2 (chưa có OAuth2 — thêm ở Phase 3).
+Thay bản permit-all tạm ở Phase 1 bằng cấu hình JWT stateless thật (chưa có OAuth2 — thêm ở Phase 3). Ráp tất cả mảnh đã dựng: JWT filter + 401/403 handler + rule phân quyền.
+
+| Cấu hình | Ý nghĩa |
+|---|---|
+| `csrf disable` | Token ở header (không dùng cookie session) → CSRF không áp dụng. |
+| `STATELESS` | Không tạo/dùng HttpSession — mỗi request tự xác thực bằng token. |
+| `/api/auth/**` permitAll | Đăng ký/login/refresh/verify — chưa có token nên phải mở. |
+| `/api/users/**` hasRole("ADMIN") | Quản trị user chỉ dành cho admin. |
+| `addFilterBefore(jwtFilter, ...)` | Chạy JWT filter trước filter username/password mặc định. |
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.config;
 
-import com.maaitlunghau.__fullstack_user_management.security.CustomAccessDeniedHandler;
-import com.maaitlunghau.__fullstack_user_management.security.CustomAuthenticationEntryPoint;
-import com.maaitlunghau.__fullstack_user_management.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -1614,6 +1908,10 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import com.maaitlunghau.__fullstack_user_management.security.CustomAccessDeniedHandler;
+import com.maaitlunghau.__fullstack_user_management.security.CustomAuthenticationEntryPoint;
+import com.maaitlunghau.__fullstack_user_management.security.JwtAuthenticationFilter;
 
 @Configuration
 @EnableMethodSecurity   // bật @PreAuthorize
@@ -1632,21 +1930,21 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         return http
-            .csrf(AbstractHttpConfigurer::disable)   // stateless JWT, token ở header → không cần CSRF
+            .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
                     "/api/auth/**",
                     "/swagger-ui/**", "/v3/api-docs/**"
                 ).permitAll()
-                .requestMatchers("/api/users/**").hasRole("ADMIN")   // quản trị
+                .requestMatchers("/api/users/**").hasRole("ADMIN")   // quản trị user
                 .anyRequest().authenticated()
             )
             .exceptionHandling(e -> e
-                .authenticationEntryPoint(authenticationEntryPoint)
-                .accessDeniedHandler(accessDeniedHandler)
+                .authenticationEntryPoint(authenticationEntryPoint)   // 401
+                .accessDeniedHandler(accessDeniedHandler)             // 403
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .build();
@@ -1657,6 +1955,10 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * AuthenticationManager cho AuthService.login() gọi authenticate().
+     * Spring Boot tự dựng DaoAuthenticationProvider từ UserDetailsServiceImpl + PasswordEncoder.
+     */
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
@@ -1664,9 +1966,11 @@ public class SecurityConfig {
 }
 ```
 
-> Xóa `PasswordConfig.java` và class security tạm ở Phase 1 (đã gộp vào đây).
+> Bản này gộp luôn `passwordEncoder()` (đã bỏ `PasswordConfig` riêng) và thay hẳn class permit-all tạm ở Phase 1.
 
 ## Bước 27 — `EmailService.java`
+
+Gửi email chứa link verify / reset. Link mang **token gốc** (opaque) — server chỉ lưu SHA-256 của nó, khi user bấm link sẽ hash lại để tra cứu. Dev trỏ vào **MailHog** (`localhost:1025`), xem email ở `http://localhost:8025`, không gửi ra ngoài thật.
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.service;
@@ -1726,9 +2030,10 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+/** Người dùng tự đăng ký (khác CreateUserRequest — endpoint đó dành cho admin tạo). */
 public record RegisterRequest(
         @NotBlank @Email String email,
-        @NotBlank @Size(min = 6) String password,
+        @NotBlank @Size(min = 6, message = "Password tối thiểu 6 ký tự") String password,
         @NotBlank String fullName
 ) {}
 ```
@@ -1741,6 +2046,7 @@ package com.maaitlunghau.__fullstack_user_management.dto.request;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 
+/** Đăng nhập — không đặt @Size cho password để không lộ policy khi login. */
 public record LoginRequest(
         @NotBlank @Email String email,
         @NotBlank String password
@@ -1754,6 +2060,7 @@ package com.maaitlunghau.__fullstack_user_management.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 
+/** Xin access token mới — refreshToken là chuỗi opaque client nhận lúc login. */
 public record RefreshRequest(@NotBlank String refreshToken) {}
 ```
 
@@ -1764,7 +2071,6 @@ package com.maaitlunghau.__fullstack_user_management.dto.request;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 
 public record ForgotPasswordRequest(@NotBlank @Email String email) {}
 ```
@@ -1777,45 +2083,79 @@ import jakarta.validation.constraints.Size;
 
 public record ResetPasswordRequest(
         @NotBlank String token,
-        @NotBlank @Size(min = 6) String newPassword
+        @NotBlank @Size(min = 6, message = "Password tối thiểu 6 ký tự") String newPassword
 ) {}
 ```
 
-`dto/response/AuthResponse.java`:
+`dto/response/AuthResponse.java` — dạng token response kiểu OAuth2 (thêm `tokenType` + `expiresIn` để FE biết khi nào cần refresh chủ động):
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.dto.response;
 
-public record AuthResponse(String accessToken, String refreshToken) {}
+public record AuthResponse(
+        String accessToken,
+        String refreshToken,
+        String tokenType,      // luôn "Bearer"
+        long expiresIn         // số giây access token còn sống
+) {
+    public static AuthResponse of(String accessToken, String refreshToken, long expiresInSeconds) {
+        return new AuthResponse(accessToken, refreshToken, "Bearer", expiresInSeconds);
+    }
+}
 ```
 
 ## Bước 29 — `AuthService.java`
 
-Toàn bộ logic: register → gửi mail, verify, login, refresh, logout, forgot/reset password.
+Bước lớn nhất Phase 2 — ráp toàn bộ. Các điểm bảo mật cốt lõi:
+
+| Flow | Kỹ thuật |
+|---|---|
+| **register** | Tạo user (chưa verify) → phát verification token **opaque**, lưu **hash**, gửi email token gốc. |
+| **verifyEmail** | Hash token client gửi → tra `findByTokenHash` → `isUsable()` → `markEmailVerified()` + `markUsed()`. |
+| **login** | Xác thực qua `AuthenticationManager` → mỗi lần mở một **phiên mới** (`sessionId` = UUID, hỗ trợ đa thiết bị) → phát access + refresh, lưu hash refresh + ip/userAgent. |
+| **refresh** | **Rotation**: tra hash → phát token mới cùng `sessionId`, `oldToken.rotatedTo(newHash)`. **Reuse detection**: token đã revoked mà dùng lại → thu hồi cả phiên (`REUSE_DETECTED`). |
+| **logout** | Blacklist jti (tầng 1) + thu hồi đúng phiên chứa refresh token (tầng 2) → chỉ đăng xuất thiết bị hiện tại. |
+| **forgot/reset** | Vô hiệu token reset cũ → phát token mới; reset xong `markUsed()` + thu hồi **mọi phiên** (`PASSWORD_CHANGED`). |
+
+> Login ném `BadCredentialsException` (sai mật khẩu) / `DisabledException` (bị vô hiệu hoá) — cần thêm handler ở `GlobalExceptionHandler` (Bước 11) để trả 401/403 thay vì 500.
+>
+> `AuthService` không phụ thuộc servlet: `ip`/`userAgent` được controller trích từ `HttpServletRequest` rồi truyền vào (dễ test hơn).
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.service;
 
-import com.maaitlunghau.__fullstack_user_management.dto.request.*;
-import com.maaitlunghau.__fullstack_user_management.dto.response.AuthResponse;
-import com.maaitlunghau.__fullstack_user_management.entity.*;
-import com.maaitlunghau.__fullstack_user_management.exception.BadRequestException;
-import com.maaitlunghau.__fullstack_user_management.exception.DuplicateResourceException;
-import com.maaitlunghau.__fullstack_user_management.exception.ResourceNotFoundException;
-import com.maaitlunghau.__fullstack_user_management.repository.*;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.UUID;
+import com.maaitlunghau.__fullstack_user_management.dto.request.LoginRequest;
+import com.maaitlunghau.__fullstack_user_management.dto.request.RegisterRequest;
+import com.maaitlunghau.__fullstack_user_management.dto.request.ResetPasswordRequest;
+import com.maaitlunghau.__fullstack_user_management.dto.response.AuthResponse;
+import com.maaitlunghau.__fullstack_user_management.entity.RefreshToken;
+import com.maaitlunghau.__fullstack_user_management.entity.RevokedReason;
+import com.maaitlunghau.__fullstack_user_management.entity.User;
+import com.maaitlunghau.__fullstack_user_management.entity.VerificationToken;
+import com.maaitlunghau.__fullstack_user_management.exception.BadRequestException;
+import com.maaitlunghau.__fullstack_user_management.exception.DuplicateResourceException;
+import com.maaitlunghau.__fullstack_user_management.exception.ResourceNotFoundException;
+import com.maaitlunghau.__fullstack_user_management.repository.RefreshTokenRepository;
+import com.maaitlunghau.__fullstack_user_management.repository.UserRepository;
+import com.maaitlunghau.__fullstack_user_management.repository.VerificationTokenRepository;
 
 @Service
 @Transactional
 public class AuthService {
+
+    private static final Duration EMAIL_VERIFY_TTL = Duration.ofHours(24);
+    private static final Duration PASSWORD_RESET_TTL = Duration.ofHours(1);
 
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -1826,11 +2166,19 @@ public class AuthService {
     private final TokenBlacklist tokenBlacklist;
     private final EmailService emailService;
 
+    private final long accessExpirationMs;
+    private final long refreshExpirationMs;
+
     public AuthService(UserRepository userRepository,
                        RefreshTokenRepository refreshTokenRepository,
                        VerificationTokenRepository verificationTokenRepository,
-                       PasswordEncoder passwordEncoder, AuthenticationManager authenticationManager,
-                       JwtService jwtService, TokenBlacklist tokenBlacklist, EmailService emailService) {
+                       PasswordEncoder passwordEncoder,
+                       AuthenticationManager authenticationManager,
+                       JwtService jwtService,
+                       TokenBlacklist tokenBlacklist,
+                       EmailService emailService,
+                       @Value("${app.jwt.access-token-expiration}") long accessExpirationMs,
+                       @Value("${app.jwt.refresh-token-expiration}") long refreshExpirationMs) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.verificationTokenRepository = verificationTokenRepository;
@@ -1839,36 +2187,42 @@ public class AuthService {
         this.jwtService = jwtService;
         this.tokenBlacklist = tokenBlacklist;
         this.emailService = emailService;
+        this.accessExpirationMs = accessExpirationMs;
+        this.refreshExpirationMs = refreshExpirationMs;
     }
 
-    // ===== REGISTER =====
+    // ===================== REGISTER =====================
+
     public void register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.email())) {
             throw new DuplicateResourceException("Email đã tồn tại: " + request.email());
         }
-        User user = new User(request.email(), passwordEncoder.encode(request.password()), request.fullName());
-        // role mặc định USER đã set trong entity
+        User user = new User(request.email(),
+            passwordEncoder.encode(request.password()), request.fullName());
         userRepository.save(user);
-
-        String token = UUID.randomUUID().toString();
-        verificationTokenRepository.save(new VerificationToken(
-            token, user, VerificationToken.Type.EMAIL_VERIFY, Instant.now().plus(24, ChronoUnit.HOURS)));
-        emailService.sendVerificationEmail(user.getEmail(), token);
+        sendEmailVerification(user);
     }
 
-    // ===== VERIFY EMAIL =====
-    public void verifyEmail(String token) {
-        VerificationToken vt = verificationTokenRepository.findByToken(token)
-            .orElseThrow(() -> new BadRequestException("Token không hợp lệ"));
-        if (vt.getType() != VerificationToken.Type.EMAIL_VERIFY || vt.isExpired()) {
-            throw new BadRequestException("Token không hợp lệ hoặc đã hết hạn");
-        }
-        vt.getUser().markEmailVerified();
-        verificationTokenRepository.delete(vt);   // dùng một lần
+    private void sendEmailVerification(User user) {
+        String rawToken = jwtService.generateOpaqueToken();
+        VerificationToken token = new VerificationToken(
+            jwtService.hashToken(rawToken), user,
+            VerificationToken.Type.EMAIL_VERIFY, Instant.now().plus(EMAIL_VERIFY_TTL));
+        verificationTokenRepository.save(token);
+        emailService.sendVerificationEmail(user.getEmail(), rawToken);
     }
 
-    // ===== LOGIN =====
-    public AuthResponse login(LoginRequest request) {
+    // ===================== VERIFY EMAIL =====================
+
+    public void verifyEmail(String rawToken) {
+        VerificationToken token = findUsableToken(rawToken, VerificationToken.Type.EMAIL_VERIFY);
+        token.getUser().markEmailVerified();
+        token.markUsed();
+    }
+
+    // ===================== LOGIN =====================
+
+    public AuthResponse login(LoginRequest request, String ipAddress, String userAgent) {
         authenticationManager.authenticate(
             new UsernamePasswordAuthenticationToken(request.email(), request.password()));
 
@@ -1876,90 +2230,152 @@ public class AuthService {
             .orElseThrow(() -> new ResourceNotFoundException("User", request.email()));
 
         if (!user.isEmailVerified()) {
-            throw new BadRequestException("Email chưa được xác thực. Kiểm tra hộp thư.");
+            throw new BadRequestException("Email chưa được xác thực. Kiểm tra hộp thư để kích hoạt.");
         }
 
-        refreshTokenRepository.revokeAllByUser(user);   // 1 phiên đăng nhập
-        return issueTokens(user);
+        String sessionId = UUID.randomUUID().toString();   // mỗi login một phiên mới
+        return issueTokens(user, sessionId, ipAddress, userAgent);
     }
 
-    // ===== REFRESH =====
-    public AuthResponse refresh(String refreshTokenValue) {
-        RefreshToken stored = refreshTokenRepository.findByToken(refreshTokenValue)
-            .orElseThrow(() -> new BadRequestException("Refresh token không tồn tại"));
-        if (stored.isRevoked() || stored.getExpiresAt().isBefore(Instant.now())) {
-            throw new BadRequestException("Refresh token đã bị thu hồi hoặc hết hạn");
+    // ===================== REFRESH (rotation + reuse detection) =====================
+
+    // noRollbackFor: khi phát hiện reuse ta thu hồi cả phiên RỒI ném lỗi báo client.
+    // Nếu để mặc định, exception sẽ rollback luôn việc thu hồi vừa làm → phải giữ commit.
+    @Transactional(noRollbackFor = BadRequestException.class)
+    public AuthResponse refresh(String rawRefreshToken, String ipAddress, String userAgent) {
+        RefreshToken stored = refreshTokenRepository
+            .findByTokenHash(jwtService.hashToken(rawRefreshToken))
+            .orElseThrow(() -> new BadRequestException("Refresh token không hợp lệ"));
+
+        if (stored.isRevoked()) {   // đã thu hồi mà dùng lại → nghi bị đánh cắp
+            revokeSession(stored.getSessionId(), RevokedReason.REUSE_DETECTED);
+            throw new BadRequestException(
+                "Refresh token đã bị thu hồi. Nghi ngờ bị đánh cắp — đã đăng xuất toàn bộ phiên này.");
         }
+        if (stored.isExpired()) {
+            throw new BadRequestException("Refresh token đã hết hạn, vui lòng đăng nhập lại.");
+        }
+
         User user = stored.getUser();
-        if (!jwtService.isValid(refreshTokenValue, user.getEmail())) {
-            throw new BadRequestException("Refresh token không hợp lệ");
-        }
-        // access token mới, giữ nguyên refresh token cũ
-        return new AuthResponse(jwtService.generateAccessToken(user), refreshTokenValue);
+        String newRawRefresh = jwtService.generateOpaqueToken();
+        String newHash = jwtService.hashToken(newRawRefresh);
+        stored.rotatedTo(newHash);   // thu hồi token cũ (ROTATED) + ghi vết thay thế
+
+        refreshTokenRepository.save(new RefreshToken(newHash, user, stored.getSessionId(),
+            Instant.now().plusMillis(refreshExpirationMs), ipAddress, userAgent));
+
+        String access = jwtService.generateAccessToken(user);
+        return AuthResponse.of(access, newRawRefresh, accessExpirationMs / 1000);
     }
 
-    // ===== LOGOUT =====
-    public void logout(String accessToken, User user) {
+    // ===================== LOGOUT =====================
+
+    public void logout(String accessToken, String rawRefreshToken) {
         String jti = jwtService.extractJti(accessToken);
-        tokenBlacklist.blacklist(jti, jwtService.remainingSeconds(accessToken));  // tầng 1
-        refreshTokenRepository.revokeAllByUser(user);                              // tầng 2
+        tokenBlacklist.blacklist(jti, jwtService.remainingSeconds(accessToken));   // tầng 1
+
+        if (rawRefreshToken != null && !rawRefreshToken.isBlank()) {               // tầng 2
+            refreshTokenRepository.findByTokenHash(jwtService.hashToken(rawRefreshToken))
+                .ifPresent(rt -> revokeSession(rt.getSessionId(), RevokedReason.LOGOUT));
+        }
     }
 
-    // ===== FORGOT PASSWORD =====
+    // ===================== FORGOT PASSWORD =====================
+
     public void forgotPassword(String email) {
         userRepository.findByEmail(email).ifPresent(user -> {
-            String token = UUID.randomUUID().toString();
+            verificationTokenRepository
+                .findByUserAndTypeAndIsUsedFalse(user, VerificationToken.Type.PASSWORD_RESET)
+                .forEach(VerificationToken::markUsed);   // vô hiệu token reset cũ
+
+            String rawToken = jwtService.generateOpaqueToken();
             verificationTokenRepository.save(new VerificationToken(
-                token, user, VerificationToken.Type.PASSWORD_RESET, Instant.now().plus(1, ChronoUnit.HOURS)));
-            emailService.sendPasswordResetEmail(user.getEmail(), token);
+                jwtService.hashToken(rawToken), user,
+                VerificationToken.Type.PASSWORD_RESET, Instant.now().plus(PASSWORD_RESET_TTL)));
+            emailService.sendPasswordResetEmail(user.getEmail(), rawToken);
         });
-        // luôn trả về như nhau — không lộ email nào tồn tại
+        // luôn trả về như nhau — không tiết lộ email nào tồn tại
     }
 
-    // ===== RESET PASSWORD =====
+    // ===================== RESET PASSWORD =====================
+
     public void resetPassword(ResetPasswordRequest request) {
-        VerificationToken vt = verificationTokenRepository.findByToken(request.token())
+        VerificationToken token = findUsableToken(request.token(), VerificationToken.Type.PASSWORD_RESET);
+        User user = token.getUser();
+        user.changePassword(passwordEncoder.encode(request.newPassword()));
+        token.markUsed();
+        revokeAllSessions(user, RevokedReason.PASSWORD_CHANGED);   // buộc đăng nhập lại khắp nơi
+    }
+
+    // ===================== helpers =====================
+
+    private AuthResponse issueTokens(User user, String sessionId, String ipAddress, String userAgent) {
+        String access = jwtService.generateAccessToken(user);
+        String rawRefresh = jwtService.generateOpaqueToken();
+        refreshTokenRepository.save(new RefreshToken(
+            jwtService.hashToken(rawRefresh), user, sessionId,
+            Instant.now().plusMillis(refreshExpirationMs), ipAddress, userAgent));
+        return AuthResponse.of(access, rawRefresh, accessExpirationMs / 1000);
+    }
+
+    private VerificationToken findUsableToken(String rawToken, VerificationToken.Type expectedType) {
+        VerificationToken token = verificationTokenRepository
+            .findByTokenHash(jwtService.hashToken(rawToken))
             .orElseThrow(() -> new BadRequestException("Token không hợp lệ"));
-        if (vt.getType() != VerificationToken.Type.PASSWORD_RESET || vt.isExpired()) {
+        if (token.getType() != expectedType || !token.isUsable()) {
             throw new BadRequestException("Token không hợp lệ hoặc đã hết hạn");
         }
-        User user = vt.getUser();
-        user.changePassword(passwordEncoder.encode(request.newPassword()));
-        refreshTokenRepository.revokeAllByUser(user);   // buộc đăng nhập lại
-        verificationTokenRepository.delete(vt);
+        return token;
     }
 
-    // ===== helper — tạo access + refresh, lưu refresh vào DB =====
-    private AuthResponse issueTokens(User user) {
-        String access = jwtService.generateAccessToken(user);
-        String refresh = jwtService.generateRefreshToken(user);
-        refreshTokenRepository.save(new RefreshToken(
-            refresh, user, Instant.now().plus(7, ChronoUnit.DAYS)));
-        return new AuthResponse(access, refresh);
+    private void revokeSession(String sessionId, RevokedReason reason) {
+        refreshTokenRepository.findBySessionIdAndIsRevokedFalse(sessionId)
+            .forEach(token -> token.revoke(reason));
     }
 
-    // public để SocialLoginService (Phase 3) tái dùng
-    public AuthResponse issueTokensFor(User user) {
-        return issueTokens(user);
+    private void revokeAllSessions(User user, RevokedReason reason) {
+        refreshTokenRepository.findByUserAndIsRevokedFalse(user)
+            .forEach(token -> token.revoke(reason));
     }
 }
 ```
 
 ## Bước 30 — `AuthController.java`
 
+> **Khác guide gốc:** `login`/`refresh` nhận thêm `HttpServletRequest` để trích **IP + User-Agent** (bind thiết bị cho refresh token). `logout` nhận `LogoutRequest` (body, refreshToken tùy chọn) — dùng access token ở header + refresh token ở body để đăng xuất đúng thiết bị. Cần thêm DTO `LogoutRequest`.
+
+```java
+package com.maaitlunghau.__fullstack_user_management.dto.request;
+
+/** refreshToken tùy chọn — có thì thu hồi đúng phiên, không thì chỉ blacklist access token. */
+public record LogoutRequest(String refreshToken) {}
+```
+
 ```java
 package com.maaitlunghau.__fullstack_user_management.controller;
 
-import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
-import com.maaitlunghau.__fullstack_user_management.dto.request.*;
-import com.maaitlunghau.__fullstack_user_management.dto.response.AuthResponse;
-import com.maaitlunghau.__fullstack_user_management.entity.User;
-import com.maaitlunghau.__fullstack_user_management.service.AuthService;
-import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
+import com.maaitlunghau.__fullstack_user_management.dto.request.ForgotPasswordRequest;
+import com.maaitlunghau.__fullstack_user_management.dto.request.LoginRequest;
+import com.maaitlunghau.__fullstack_user_management.dto.request.LogoutRequest;
+import com.maaitlunghau.__fullstack_user_management.dto.request.RefreshRequest;
+import com.maaitlunghau.__fullstack_user_management.dto.request.RegisterRequest;
+import com.maaitlunghau.__fullstack_user_management.dto.request.ResetPasswordRequest;
+import com.maaitlunghau.__fullstack_user_management.dto.response.AuthResponse;
+import com.maaitlunghau.__fullstack_user_management.service.AuthService;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -1985,19 +2401,25 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ApiResponse.ok("Đăng nhập thành công", authService.login(request));
+    public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request,
+                                           HttpServletRequest servletRequest) {
+        AuthResponse tokens = authService.login(request, clientIp(servletRequest), userAgent(servletRequest));
+        return ApiResponse.ok("Đăng nhập thành công", tokens);
     }
 
     @PostMapping("/refresh-token")
-    public ApiResponse<AuthResponse> refresh(@Valid @RequestBody RefreshRequest request) {
-        return ApiResponse.ok("Cấp access token mới", authService.refresh(request.refreshToken()));
+    public ApiResponse<AuthResponse> refresh(@Valid @RequestBody RefreshRequest request,
+                                             HttpServletRequest servletRequest) {
+        AuthResponse tokens = authService.refresh(request.refreshToken(), clientIp(servletRequest), userAgent(servletRequest));
+        return ApiResponse.ok("Cấp access token mới", tokens);
     }
 
     @PostMapping("/logout")
     public ApiResponse<Void> logout(@RequestHeader("Authorization") String authHeader,
-                                    @AuthenticationPrincipal User user) {
-        authService.logout(authHeader.substring(7), user);
+                                    @RequestBody(required = false) LogoutRequest request) {
+        String accessToken = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+        String refreshToken = request != null ? request.refreshToken() : null;
+        authService.logout(accessToken, refreshToken);
         return ApiResponse.message(200, "Đăng xuất thành công");
     }
 
@@ -2011,6 +2433,19 @@ public class AuthController {
     public ApiResponse<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         authService.resetPassword(request);
         return ApiResponse.message(200, "Đặt lại mật khẩu thành công");
+    }
+
+    /** IP client thật: ưu tiên X-Forwarded-For (khi qua proxy/load balancer). */
+    private String clientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
+    }
+
+    private String userAgent(HttpServletRequest request) {
+        return request.getHeader("User-Agent");
     }
 }
 ```
@@ -2048,23 +2483,61 @@ public class MeController {
     public ApiResponse<UserResponse> update(@AuthenticationPrincipal User user,
                                             @Valid @RequestBody UpdateUserRequest request) {
         return ApiResponse.ok("Cập nhật profile thành công",
-            UserResponse.from(userService.update(user.getId(), request)));
+            UserResponse.from(userService.updateUser(user.getId(), request)));
     }
 }
 ```
 
 > `@AuthenticationPrincipal User user` inject trực tiếp entity `User` vì nó `implements UserDetails` và filter đã set nó làm principal.
 
-## Bước 32 — RBAC bằng `@PreAuthorize` (tùy chọn, mịn hơn)
+## Bước 32 — RBAC bằng `@PreAuthorize` (method-level, mịn hơn URL)
 
-`SecurityConfig` đã chặn `/api/users/**` = `hasRole("ADMIN")` ở tầng URL. Nếu muốn phân quyền tới từng method (ví dụ vừa cho ADMIN vừa cho chủ sở hữu), dùng `@PreAuthorize` trong controller/service:
+Rule URL `hasRole("ADMIN")` không diễn tả được luật kiểu **"ADMIN hoặc chính chủ"**. Ta chuyển phân quyền `/api/users` từ URL-level sang **method-level** bằng `@PreAuthorize` (đã bật `@EnableMethodSecurity` ở Bước 26). Lợi ích: rule nằm ngay cạnh code, và biểu diễn được luật mịn.
+
+**(1) Bỏ rule URL trong `SecurityConfig`** để `@PreAuthorize` nắm quyền (nếu còn rule URL, non-admin bị chặn trước khi luật owner-or-admin kịp chạy):
 
 ```java
-// ví dụ: chỉ ADMIN mới gán role
-@PreAuthorize("hasRole('ADMIN')")
-@PatchMapping("/{id}/roles")
-public ApiResponse<UserResponse> assignRoles(@PathVariable Long id, @RequestBody Set<String> roles) { ... }
+.authorizeHttpRequests(auth -> auth
+    .requestMatchers("/api/auth/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
+    // BỎ dòng: .requestMatchers("/api/users/**").hasRole("ADMIN")
+    // → /api/users/** phân quyền ở method-level bằng @PreAuthorize
+    .anyRequest().authenticated()
+)
 ```
+
+**(2) Thêm `@PreAuthorize` vào `UserController`** — `getById` dùng owner-or-admin:
+
+```java
+@GetMapping
+@PreAuthorize("hasRole('ADMIN')")
+public ApiResponse<Page<UserResponse>> list(...) { ... }
+
+// ADMIN xem mọi user; USER chỉ xem chính mình.
+// #id = biến path, principal.id = getId() của user đang đăng nhập (principal là entity User).
+@GetMapping("/{id}")
+@PreAuthorize("hasRole('ADMIN') or #id == principal.id")
+public ApiResponse<UserResponse> getById(@PathVariable Long id) { ... }
+
+@PostMapping   @PreAuthorize("hasRole('ADMIN')")  public ... create(...) { ... }
+@PutMapping    @PreAuthorize("hasRole('ADMIN')")  public ... update(...) { ... }
+@DeleteMapping @PreAuthorize("hasRole('ADMIN')")  public ... delete(...) { ... }
+```
+
+> `#id` cần tên tham số ở bytecode — Spring Boot parent POM đã bật `-parameters` sẵn nên dùng được.
+
+**(3) BẮT BUỘC thêm handler 403 cho method security.** `@PreAuthorize` ném `AccessDeniedException` **bên trong controller** (khác với denial ở URL-level do filter xử lý qua `CustomAccessDeniedHandler`). Nếu không bắt riêng, catch-all `@ExceptionHandler(Exception.class)` sẽ nuốt nó thành **500**. Thêm vào `GlobalExceptionHandler` (Bước 11):
+
+```java
+import org.springframework.security.access.AccessDeniedException;
+
+@ExceptionHandler(AccessDeniedException.class)
+public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
+    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+        .body(ApiResponse.message(403, "Access denied — insufficient permission"));
+}
+```
+
+**Kết quả test:** USER list → 403; USER GET chính mình → 200; USER GET người khác → 403; ADMIN mọi thứ → 200; không token → 401. Tất cả body 403 là JSON (không phải 500).
 
 ## Bước 33 — Chạy & test Phase 2
 
