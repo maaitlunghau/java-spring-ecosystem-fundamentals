@@ -1,0 +1,67 @@
+spring:
+  application:
+    name: 09-fullstack-user-management
+
+  datasource:
+    url: "jdbc:mysql://${MYSQL_HOST:localhost}:3306/user_management?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&createDatabaseIfNotExist=true"
+    username: root
+    password: "112233"
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  mail:
+    host: localhost
+    port: 1025
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+  # ===== Auth0 — BẬT LẠI Ở PHASE 3 =====
+  # Phase 1-2 chưa cần Auth0. Khi có issuer-uri, Spring gọi Auth0 lúc khởi động
+  # để tải OIDC config; nếu domain còn là placeholder → app không boot được.
+  # Bỏ comment khối dưới khi đã có tenant Auth0 thật (Phase 3).
+  # security:
+  #   oauth2:
+  #     client:
+  #       registration:
+  #         auth0:
+  #           client-id: ${AUTH0_CLIENT_ID}
+  #           client-secret: ${AUTH0_CLIENT_SECRET}
+  #           scope: openid,profile,email
+  #           authorization-grant-type: authorization_code
+  #           redirect-uri: "{baseUrl}/login/oauth2/code/auth0"
+  #       provider:
+  #         auth0:
+  #           issuer-uri: "https://${AUTH0_DOMAIN}/"
+
+  # Load file local (nếu có) — chứa AUTH0_* thật, gitignored
+  config:
+    import: "optional:application-local.properties"
+
+server:
+  port: 8081
+
+app:
+  frontend-url: "http://localhost:5173"
+  mail:
+    from: no-reply@usermgmt.local
+  jwt:
+    secret: "aVeryLongSecretKeyForHmacSha256ThatIsAtLeast32Bytes!!"
+    access-token-expiration: 900000
+    refresh-token-expiration: 604800000
