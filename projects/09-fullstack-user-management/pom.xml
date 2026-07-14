@@ -75,6 +75,13 @@
 			<artifactId>spring-boot-starter-data-redis</artifactId>
 		</dependency>
 
+		<!-- Bucket4j — rate limiting (token bucket, in-memory) -->
+		<dependency>
+			<groupId>com.bucket4j</groupId>
+			<artifactId>bucket4j-core</artifactId>
+			<version>8.10.1</version>
+		</dependency>
+
 		<!-- OAuth2 Client -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
