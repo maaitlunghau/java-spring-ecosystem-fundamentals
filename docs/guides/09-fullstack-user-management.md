@@ -1146,50 +1146,150 @@ public class User implements UserDetails {
 
 ## Bước 18 — Entity `RefreshToken.java`
 
+Refresh token sống lâu (7 ngày) và **đổi được thành access token** → nó mạnh ngang password. Vì vậy entity này làm ở mức **production-grade**, không chỉ "đủ chạy":
+
+| Kỹ thuật | Vì sao cần |
+|---|---|
+| **Hash token** (`tokenHash` = SHA-256) | Không lưu token gốc — DB bị lộ cũng không dùng được (giống hash password). |
+| **Rotation** (`replacedByTokenHash`) | Mỗi lần refresh cấp token mới, thu hồi token cũ → token chỉ dùng 1 lần. |
+| **Reuse detection** (`sessionId`) | Token đã revoked mà bị dùng lại = bị đánh cắp → thu hồi cả họ token cùng session. |
+| **Audit** (`revokedReason`, `revokedAt`, `createdAt`) | Điều tra sự cố: vì sao/khi nào token bị thu hồi. |
+| **Device binding** (`ipAddress`, `userAgent`) | UI "các thiết bị đang đăng nhập" + phát hiện bất thường. |
+
+> **Đặt tên đúng nghĩa để tránh sai logic:** `expiresAt` (hạn *sẽ* hết — tương lai) chứ không phải `expiredAt` (hàm ý *đã* hết). Ngược lại `revokedAt`/`createdAt` là mốc sự kiện *đã* xảy ra nên dùng `-edAt`.
+
 ```java
 package com.maaitlunghau.__fullstack_user_management.entity;
 
-import jakarta.persistence.*;
 import java.time.Instant;
 
+import jakarta.persistence.*;
+
 @Entity
-@Table(name = "refresh_tokens")
+@Table(name = "refresh_tokens", indexes = {
+    // Index cho các cột hay tra cứu → query nhanh khi bảng lớn
+    @Index(name = "idx_refresh_token_hash", columnList = "token_hash"),
+    @Index(name = "idx_refresh_user", columnList = "user_id"),
+    @Index(name = "idx_refresh_session", columnList = "session_id")
+})
 public class RefreshToken {
+
+    /** Lý do token bị thu hồi — phục vụ audit/điều tra sự cố. */
+    public enum RevokedReason {
+        LOGOUT,             // user chủ động logout
+        ROTATED,            // bị thay bằng token mới khi refresh (vòng đời bình thường)
+        REUSE_DETECTED,     // token cũ bị dùng lại → nghi bị đánh cắp
+        PASSWORD_CHANGED,   // đổi/reset mật khẩu → buộc đăng nhập lại
+        ADMIN_REVOKED       // admin thu hồi thủ công
+    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 1000)
-    private String token;
+    /**
+     * SHA-256(token) dạng hex 64 ký tự — KHÔNG lưu token gốc.
+     * Lúc refresh: hash token client gửi lên rồi tra theo hash.
+     */
+    @Column(name = "token_hash", nullable = false, unique = true, length = 64)
+    private String tokenHash;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(nullable = false)
-    private boolean revoked = false;
+    /**
+     * ID nhóm mọi token thuộc CÙNG một phiên đăng nhập (sinh lúc login, giữ nguyên
+     * qua các lần rotation). Bị đánh cắp → thu hồi cả họ token theo sessionId này.
+     */
+    @Column(name = "session_id", nullable = false, length = 36)
+    private String sessionId;
 
+    @Column(name = "is_revoked", nullable = false)
+    private boolean isRevoked = false;
+
+    /** Mốc token BỊ thu hồi (quá khứ) — null nếu còn hiệu lực. */
+    @Column(name = "revoked_at")
+    private Instant revokedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "revoked_reason", length = 30)
+    private RevokedReason revokedReason;
+
+    /** Vết rotation: hash của token đã THAY THẾ token này (lần theo chuỗi rotation). */
+    @Column(name = "replaced_by_token_hash", length = 64)
+    private String replacedByTokenHash;
+
+    /** IP lúc cấp token — phát hiện bất thường. */
+    @Column(name = "ip_address", length = 45)   // 45 ký tự đủ chứa cả IPv6
+    private String ipAddress;
+
+    /** Trình duyệt/thiết bị — phục vụ UI "các thiết bị đang đăng nhập". */
+    @Column(name = "user_agent", length = 512)
+    private String userAgent;
+
+    /** Mốc token ĐƯỢC tạo (quá khứ) — set tự động ở @PrePersist. */
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private Instant createdAt;
+
+    /** Mốc token SẼ hết hạn (tương lai) — expiresAt, không phải expiredAt. */
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
-    protected RefreshToken() {}
-
-    public RefreshToken(String token, User user, Instant expiresAt) {
-        this.token = token;
-        this.user = user;
-        this.expiresAt = expiresAt;
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = Instant.now();
     }
 
-    public void revoke() { this.revoked = true; }
+    protected RefreshToken() {}
 
+    public RefreshToken(String tokenHash, User user, String sessionId,
+                        Instant expiresAt, String ipAddress, String userAgent) {
+        this.tokenHash = tokenHash;
+        this.user = user;
+        this.sessionId = sessionId;
+        this.expiresAt = expiresAt;
+        this.ipAddress = ipAddress;
+        this.userAgent = userAgent;
+    }
+
+    // ===== domain methods =====
+
+    /** Thu hồi token kèm lý do (ghi lại thời điểm để audit). */
+    public void revoke(RevokedReason reason) {
+        this.isRevoked = true;
+        this.revokedReason = reason;
+        this.revokedAt = Instant.now();
+    }
+
+    /** Đánh dấu token này đã bị thay bằng token mới (khi rotation lúc refresh). */
+    public void rotatedTo(String newTokenHash) {
+        this.replacedByTokenHash = newTokenHash;
+        revoke(RevokedReason.ROTATED);
+    }
+
+    public boolean isExpired() { return Instant.now().isAfter(expiresAt); }
+
+    /** true nếu còn hợp lệ để refresh (chưa thu hồi VÀ chưa hết hạn). */
+    public boolean isActive() { return !isRevoked && !isExpired(); }
+
+    // ===== getters =====
     public Long getId() { return id; }
-    public String getToken() { return token; }
+    public String getTokenHash() { return tokenHash; }
     public User getUser() { return user; }
-    public boolean isRevoked() { return revoked; }
+    public String getSessionId() { return sessionId; }
+    public boolean isRevoked() { return isRevoked; }
+    public Instant getRevokedAt() { return revokedAt; }
+    public RevokedReason getRevokedReason() { return revokedReason; }
+    public String getReplacedByTokenHash() { return replacedByTokenHash; }
+    public String getIpAddress() { return ipAddress; }
+    public String getUserAgent() { return userAgent; }
+    public Instant getCreatedAt() { return createdAt; }
     public Instant getExpiresAt() { return expiresAt; }
 }
 ```
+
+> Các bước sau (`RefreshTokenRepository`, `JwtService`, `AuthService`) sẽ dùng: hàm `sha256(token)` để hash trước khi tra cứu; rotation cấp token mới + `oldToken.rotatedTo(newHash)`; nếu tra ra token đã `isRevoked` → thu hồi cả session (`REUSE_DETECTED`). Sẽ đồng bộ chi tiết khi làm tới.
 
 ## Bước 19 — Entity `VerificationToken.java`
 
