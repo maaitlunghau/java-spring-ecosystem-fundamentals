@@ -2329,19 +2329,40 @@ public class AuthService {
 
 ## Bước 30 — `AuthController.java`
 
+> **Khác guide gốc:** `login`/`refresh` nhận thêm `HttpServletRequest` để trích **IP + User-Agent** (bind thiết bị cho refresh token). `logout` nhận `LogoutRequest` (body, refreshToken tùy chọn) — dùng access token ở header + refresh token ở body để đăng xuất đúng thiết bị. Cần thêm DTO `LogoutRequest`.
+
+```java
+package com.maaitlunghau.__fullstack_user_management.dto.request;
+
+/** refreshToken tùy chọn — có thì thu hồi đúng phiên, không thì chỉ blacklist access token. */
+public record LogoutRequest(String refreshToken) {}
+```
+
 ```java
 package com.maaitlunghau.__fullstack_user_management.controller;
 
-import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
-import com.maaitlunghau.__fullstack_user_management.dto.request.*;
-import com.maaitlunghau.__fullstack_user_management.dto.response.AuthResponse;
-import com.maaitlunghau.__fullstack_user_management.entity.User;
-import com.maaitlunghau.__fullstack_user_management.service.AuthService;
-import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
+import com.maaitlunghau.__fullstack_user_management.dto.request.ForgotPasswordRequest;
+import com.maaitlunghau.__fullstack_user_management.dto.request.LoginRequest;
+import com.maaitlunghau.__fullstack_user_management.dto.request.LogoutRequest;
+import com.maaitlunghau.__fullstack_user_management.dto.request.RefreshRequest;
+import com.maaitlunghau.__fullstack_user_management.dto.request.RegisterRequest;
+import com.maaitlunghau.__fullstack_user_management.dto.request.ResetPasswordRequest;
+import com.maaitlunghau.__fullstack_user_management.dto.response.AuthResponse;
+import com.maaitlunghau.__fullstack_user_management.service.AuthService;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -2367,19 +2388,25 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ApiResponse.ok("Đăng nhập thành công", authService.login(request));
+    public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request,
+                                           HttpServletRequest servletRequest) {
+        AuthResponse tokens = authService.login(request, clientIp(servletRequest), userAgent(servletRequest));
+        return ApiResponse.ok("Đăng nhập thành công", tokens);
     }
 
     @PostMapping("/refresh-token")
-    public ApiResponse<AuthResponse> refresh(@Valid @RequestBody RefreshRequest request) {
-        return ApiResponse.ok("Cấp access token mới", authService.refresh(request.refreshToken()));
+    public ApiResponse<AuthResponse> refresh(@Valid @RequestBody RefreshRequest request,
+                                             HttpServletRequest servletRequest) {
+        AuthResponse tokens = authService.refresh(request.refreshToken(), clientIp(servletRequest), userAgent(servletRequest));
+        return ApiResponse.ok("Cấp access token mới", tokens);
     }
 
     @PostMapping("/logout")
     public ApiResponse<Void> logout(@RequestHeader("Authorization") String authHeader,
-                                    @AuthenticationPrincipal User user) {
-        authService.logout(authHeader.substring(7), user);
+                                    @RequestBody(required = false) LogoutRequest request) {
+        String accessToken = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+        String refreshToken = request != null ? request.refreshToken() : null;
+        authService.logout(accessToken, refreshToken);
         return ApiResponse.message(200, "Đăng xuất thành công");
     }
 
@@ -2393,6 +2420,19 @@ public class AuthController {
     public ApiResponse<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         authService.resetPassword(request);
         return ApiResponse.message(200, "Đặt lại mật khẩu thành công");
+    }
+
+    /** IP client thật: ưu tiên X-Forwarded-For (khi qua proxy/load balancer). */
+    private String clientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
+    }
+
+    private String userAgent(HttpServletRequest request) {
+        return request.getHeader("User-Agent");
     }
 }
 ```
@@ -2430,7 +2470,7 @@ public class MeController {
     public ApiResponse<UserResponse> update(@AuthenticationPrincipal User user,
                                             @Valid @RequestBody UpdateUserRequest request) {
         return ApiResponse.ok("Cập nhật profile thành công",
-            UserResponse.from(userService.update(user.getId(), request)));
+            UserResponse.from(userService.updateUser(user.getId(), request)));
     }
 }
 ```
