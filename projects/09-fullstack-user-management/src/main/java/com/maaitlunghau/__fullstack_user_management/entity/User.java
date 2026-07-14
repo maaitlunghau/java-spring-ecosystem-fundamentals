@@ -65,7 +65,6 @@ public class User {
     }
 
     protected User() {}
-    
 
     public User(String fullName, 
         String email, 
@@ -89,6 +88,19 @@ public class User {
         this.fullName = fullName;
     }
 
+    public void updateProfile(String fullName, String avatarUrl) {
+        this.fullName = fullName;
+        this.avatarUrl = avatarUrl;
+    }
+
+    public void markEmailVerified() {
+        this.isEmailVerified = true;
+    }
+
+    public void changePassword(String encodedPassword) {
+        this.password = encodedPassword;
+    }
+
     public Long getId() {
         return id;
     }
@@ -97,36 +109,24 @@ public class User {
         return fullName;
     }
 
-    public void setFullName(String fullName) {
-        this.fullName = fullName;
-    }
-
     public String getAvatarUrl() {
         return avatarUrl;
-    }
-
-    public void setAvatarUrl(String avatarUrl) {
-        this.avatarUrl = avatarUrl;
     }
 
     public String getEmail() {
         return email;
     }
 
-    public void setEmail(String email) {
-        this.email = email;
-    }
-
-    public String getPassword() {
+     public String getPassword() {
         return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
     }
 
     public Role getRole() {
         return role;
+    }
+
+     public void setEmail(String email) {
+        this.email = email;
     }
 
     public void setRole(Role role) {
@@ -135,10 +135,6 @@ public class User {
 
     public boolean isEmailVerified() {
         return isEmailVerified;
-    }
-
-    public void setEmailVerified(boolean isEmailVerified) {
-        this.isEmailVerified = isEmailVerified;
     }
 
     public boolean isEnabled() {
