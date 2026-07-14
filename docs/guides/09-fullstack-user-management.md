@@ -1845,14 +1845,19 @@ public class CustomAccessDeniedHandler implements AccessDeniedHandler {
 
 ## Bước 26 — `SecurityConfig.java`
 
-Thay class tạm ở Phase 1. Đây là bản Phase 2 (chưa có OAuth2 — thêm ở Phase 3).
+Thay bản permit-all tạm ở Phase 1 bằng cấu hình JWT stateless thật (chưa có OAuth2 — thêm ở Phase 3). Ráp tất cả mảnh đã dựng: JWT filter + 401/403 handler + rule phân quyền.
+
+| Cấu hình | Ý nghĩa |
+|---|---|
+| `csrf disable` | Token ở header (không dùng cookie session) → CSRF không áp dụng. |
+| `STATELESS` | Không tạo/dùng HttpSession — mỗi request tự xác thực bằng token. |
+| `/api/auth/**` permitAll | Đăng ký/login/refresh/verify — chưa có token nên phải mở. |
+| `/api/users/**` hasRole("ADMIN") | Quản trị user chỉ dành cho admin. |
+| `addFilterBefore(jwtFilter, ...)` | Chạy JWT filter trước filter username/password mặc định. |
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.config;
 
-import com.maaitlunghau.__fullstack_user_management.security.CustomAccessDeniedHandler;
-import com.maaitlunghau.__fullstack_user_management.security.CustomAuthenticationEntryPoint;
-import com.maaitlunghau.__fullstack_user_management.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -1865,6 +1870,10 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import com.maaitlunghau.__fullstack_user_management.security.CustomAccessDeniedHandler;
+import com.maaitlunghau.__fullstack_user_management.security.CustomAuthenticationEntryPoint;
+import com.maaitlunghau.__fullstack_user_management.security.JwtAuthenticationFilter;
 
 @Configuration
 @EnableMethodSecurity   // bật @PreAuthorize
@@ -1883,21 +1892,21 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         return http
-            .csrf(AbstractHttpConfigurer::disable)   // stateless JWT, token ở header → không cần CSRF
+            .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
                     "/api/auth/**",
                     "/swagger-ui/**", "/v3/api-docs/**"
                 ).permitAll()
-                .requestMatchers("/api/users/**").hasRole("ADMIN")   // quản trị
+                .requestMatchers("/api/users/**").hasRole("ADMIN")   // quản trị user
                 .anyRequest().authenticated()
             )
             .exceptionHandling(e -> e
-                .authenticationEntryPoint(authenticationEntryPoint)
-                .accessDeniedHandler(accessDeniedHandler)
+                .authenticationEntryPoint(authenticationEntryPoint)   // 401
+                .accessDeniedHandler(accessDeniedHandler)             // 403
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .build();
@@ -1908,6 +1917,10 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * AuthenticationManager cho AuthService.login() gọi authenticate().
+     * Spring Boot tự dựng DaoAuthenticationProvider từ UserDetailsServiceImpl + PasswordEncoder.
+     */
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
@@ -1915,7 +1928,7 @@ public class SecurityConfig {
 }
 ```
 
-> Xóa `PasswordConfig.java` và class security tạm ở Phase 1 (đã gộp vào đây).
+> Bản này gộp luôn `passwordEncoder()` (đã bỏ `PasswordConfig` riêng) và thay hẳn class permit-all tạm ở Phase 1.
 
 ## Bước 27 — `EmailService.java`
 
