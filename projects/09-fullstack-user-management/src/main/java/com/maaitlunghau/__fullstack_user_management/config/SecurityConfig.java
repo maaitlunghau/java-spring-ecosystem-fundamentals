@@ -7,6 +7,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -57,6 +58,7 @@ public class SecurityConfig {
 
         http
             .csrf(AbstractHttpConfigurer::disable)
+            .cors(Customizer.withDefaults())   // dùng CorsConfigurationSource bean (CorsConfig)
             // OAuth2 authorization code cần lưu tạm state/nonce qua các redirect → IF_REQUIRED.
             // Khi chưa bật OAuth2 thì giữ STATELESS thuần cho API.
             .sessionManagement(s -> s.sessionCreationPolicy(
