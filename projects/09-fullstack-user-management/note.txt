@@ -1,0 +1,38 @@
+------------------------------------------------- 
+LƯU Ý:
+-------------------------------------------------
+
+-----------------------------
+PHASE 1
+-----------------------------
+1. Catch-all @ExceptionHandler(Exception.class) đang biến lỗi "không tìm thấy route" thành 500 (thấy rõ lúc test). Khi rảnh, thêm @ExceptionHandler(NoResourceFoundException.class) → 404 cho sạch. Không gấp.
+
+2. hiện tại Soft Detele trong project chỉ đang cập nhật field deleted_at chứ chưa xoá vĩnh viễn, cần triển khai thêm Job định kì để hard delete nó (purge job) và thêm endpoint để restore.
+
+3. cần thêm luồng hoạt động của chức năng xoá mềm vào trong tài liệu README / project. 
+sequenceDiagram
+    participant C as Client
+    participant Ctrl as UserController
+    participant Svc as UserService
+    participant Repo as UserRepository
+    participant HB as Hibernate
+    participant DB as MySQL
+
+    C->>Ctrl: DELETE /api/users/2
+    Ctrl->>Svc: deleteUser(2)
+    Svc->>Svc: findById(2) — 404 nếu không có (và bỏ qua row đã soft-deleted)
+    Svc->>Repo: delete(user)
+    Repo->>HB: xóa entity
+    Note over HB: Thấy @SoftDelete → KHÔNG chạy DELETE
+    HB->>DB: UPDATE users SET deleted_at = now() WHERE id = 2 AND deleted_at IS NULL
+    DB-->>C: 200 "User soft-deleted"
+
+4. @Transactional
+    public void deleteUser(Long id) {
+        User user = this.findById(id);
+        if (user.getRole() == Role.ADMIN)
+            throw new BadRequestException("Not allowed to delete an ADMIN account");
+
+        userRepository.delete(user);
+    }
+=> cần đổi lai thành lỗi 403 sẽ chính xác hơn 
