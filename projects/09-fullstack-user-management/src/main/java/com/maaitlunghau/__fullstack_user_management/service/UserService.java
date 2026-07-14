@@ -9,7 +9,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.maaitlunghau.__fullstack_user_management.dto.request.CreateUserRequest;
 import com.maaitlunghau.__fullstack_user_management.dto.request.UpdateUserRequest;
+import com.maaitlunghau.__fullstack_user_management.entity.Role;
 import com.maaitlunghau.__fullstack_user_management.entity.User;
+import com.maaitlunghau.__fullstack_user_management.exception.BadRequestException;
 import com.maaitlunghau.__fullstack_user_management.exception.DuplicateResourceException;
 import com.maaitlunghau.__fullstack_user_management.exception.ResourceNotFoundException;
 import com.maaitlunghau.__fullstack_user_management.repository.UserRepository;
@@ -69,6 +71,9 @@ public class UserService {
     @Transactional
     public void deleteUser(Long id) {
         User user = this.findById(id);
+        if (user.getRole() == Role.ADMIN)
+            throw new BadRequestException("Not allowed to delete an ADMIN account");
+
         userRepository.delete(user);
     }
 }
