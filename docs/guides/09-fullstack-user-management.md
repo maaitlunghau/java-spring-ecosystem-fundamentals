@@ -1932,6 +1932,8 @@ public class SecurityConfig {
 
 ## Bước 27 — `EmailService.java`
 
+Gửi email chứa link verify / reset. Link mang **token gốc** (opaque) — server chỉ lưu SHA-256 của nó, khi user bấm link sẽ hash lại để tra cứu. Dev trỏ vào **MailHog** (`localhost:1025`), xem email ở `http://localhost:8025`, không gửi ra ngoài thật.
+
 ```java
 package com.maaitlunghau.__fullstack_user_management.service;
 
