@@ -130,6 +130,9 @@ public class AuthService {
 
     // ===================== REFRESH (rotation + reuse detection) =====================
 
+    // noRollbackFor: khi phát hiện reuse ta thu hồi cả phiên RỒI ném lỗi báo client.
+    // Nếu để mặc định, exception sẽ rollback luôn việc thu hồi vừa làm → phải giữ commit.
+    @Transactional(noRollbackFor = BadRequestException.class)
     public AuthResponse refresh(String rawRefreshToken, String ipAddress, String userAgent) {
         RefreshToken stored = refreshTokenRepository
             .findByTokenHash(jwtService.hashToken(rawRefreshToken))

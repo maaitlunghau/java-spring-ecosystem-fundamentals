@@ -1222,7 +1222,8 @@ public class RefreshToken {
     @Column(name = "token_hash", nullable = false, unique = true, length = 64)
     private String tokenHash;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    // @SoftDelete trên User buộc quan hệ to-one phải EAGER (Hibernate không cho LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
@@ -1362,7 +1363,8 @@ public class VerificationToken {
     @Column(name = "token_hash", nullable = false, unique = true, length = 64)
     private String tokenHash;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    // @SoftDelete trên User buộc quan hệ to-one phải EAGER (Hibernate không cho LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
@@ -2229,6 +2231,9 @@ public class AuthService {
 
     // ===================== REFRESH (rotation + reuse detection) =====================
 
+    // noRollbackFor: khi phát hiện reuse ta thu hồi cả phiên RỒI ném lỗi báo client.
+    // Nếu để mặc định, exception sẽ rollback luôn việc thu hồi vừa làm → phải giữ commit.
+    @Transactional(noRollbackFor = BadRequestException.class)
     public AuthResponse refresh(String rawRefreshToken, String ipAddress, String userAgent) {
         RefreshToken stored = refreshTokenRepository
             .findByTokenHash(jwtService.hashToken(rawRefreshToken))
