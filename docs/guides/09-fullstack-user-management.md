@@ -1757,28 +1757,40 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
 ## Bước 25 — Custom 401 / 403 handlers
 
-**Lưu ý Spring Boot 4 / Jackson 3:** dùng `tools.jackson.databind.ObjectMapper`.
+Hai handler này tự serialize JSON để trả lỗi thống nhất định dạng `ApiResponse`. Phân biệt:
+- **401** (`AuthenticationEntryPoint`) — *chưa biết bạn là ai*: không có token, hoặc token hỏng/hết hạn.
+- **403** (`AccessDeniedHandler`) — *biết rồi nhưng không đủ quyền*: vd USER gọi endpoint ADMIN.
+
+> **Lưu ý Boot 4 / Jackson 3:** `ObjectMapper` nằm ở package `tools.jackson.databind` (không phải `com.fasterxml.jackson`).
+>
+> **Nên inject `ObjectMapper` do Spring quản lý** (qua constructor) thay vì `new ObjectMapper()`. Vì `ApiResponse` có field `LocalDateTime timestamp` — mapper của Spring đã cấu hình serialize ngày dạng ISO-8601, còn mapper new thô có thể ra dạng array/số, lệch với các response khác của API.
 
 `security/CustomAuthenticationEntryPoint.java` — 401:
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.security;
 
-import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+
 import org.springframework.http.MediaType;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
+import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+
+    public CustomAuthenticationEntryPoint(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response,
@@ -1797,21 +1809,27 @@ public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint 
 ```java
 package com.maaitlunghau.__fullstack_user_management.security;
 
-import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
+import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class CustomAccessDeniedHandler implements AccessDeniedHandler {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+
+    public CustomAccessDeniedHandler(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @Override
     public void handle(HttpServletRequest request, HttpServletResponse response,
