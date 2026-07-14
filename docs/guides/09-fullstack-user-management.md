@@ -1640,14 +1640,17 @@ public class TokenBlacklist {
 
 ## Bước 23 — `UserDetailsServiceImpl.java`
 
+Cầu nối giữa Spring Security và DB user. Spring gọi `loadUserByUsername()` khi cần xác thực (vd lúc login qua `AuthenticationManager`). Vì `User` đã `implements UserDetails` nên trả thẳng entity, không cần lớp adapter. "username" ở đây là **email** (`User.getUsername()` trả email).
+
 ```java
 package com.maaitlunghau.__fullstack_user_management.service;
 
-import com.maaitlunghau.__fullstack_user_management.repository.UserRepository;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
+
+import com.maaitlunghau.__fullstack_user_management.repository.UserRepository;
 
 @Service
 public class UserDetailsServiceImpl implements UserDetailsService {
