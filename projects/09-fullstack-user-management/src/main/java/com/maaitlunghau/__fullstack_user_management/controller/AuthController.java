@@ -19,6 +19,7 @@ import com.maaitlunghau.__fullstack_user_management.dto.request.RegisterRequest;
 import com.maaitlunghau.__fullstack_user_management.dto.request.ResetPasswordRequest;
 import com.maaitlunghau.__fullstack_user_management.dto.response.AuthResponse;
 import com.maaitlunghau.__fullstack_user_management.service.AuthService;
+import com.maaitlunghau.__fullstack_user_management.util.RequestUtils;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -49,14 +50,16 @@ public class AuthController {
     @PostMapping("/login")
     public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request,
                                            HttpServletRequest servletRequest) {
-        AuthResponse tokens = authService.login(request, clientIp(servletRequest), userAgent(servletRequest));
+        AuthResponse tokens = authService.login(request,
+            RequestUtils.clientIp(servletRequest), RequestUtils.userAgent(servletRequest));
         return ApiResponse.ok("Đăng nhập thành công", tokens);
     }
 
     @PostMapping("/refresh-token")
     public ApiResponse<AuthResponse> refresh(@Valid @RequestBody RefreshRequest request,
                                              HttpServletRequest servletRequest) {
-        AuthResponse tokens = authService.refresh(request.refreshToken(), clientIp(servletRequest), userAgent(servletRequest));
+        AuthResponse tokens = authService.refresh(request.refreshToken(),
+            RequestUtils.clientIp(servletRequest), RequestUtils.userAgent(servletRequest));
         return ApiResponse.ok("Cấp access token mới", tokens);
     }
 
@@ -79,18 +82,5 @@ public class AuthController {
     public ApiResponse<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         authService.resetPassword(request);
         return ApiResponse.message(200, "Đặt lại mật khẩu thành công");
-    }
-
-    /** IP client thật: ưu tiên X-Forwarded-For (khi qua proxy/load balancer). */
-    private String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
-    }
-
-    private String userAgent(HttpServletRequest request) {
-        return request.getHeader("User-Agent");
     }
 }
