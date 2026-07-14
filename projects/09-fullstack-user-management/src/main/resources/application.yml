@@ -32,23 +32,22 @@ spring:
           starttls:
             enable: false
 
-  # ===== Auth0 — BẬT LẠI Ở PHASE 3 =====
-  # Phase 1-2 chưa cần Auth0. Khi có issuer-uri, Spring gọi Auth0 lúc khởi động
-  # để tải OIDC config; nếu domain còn là placeholder → app không boot được.
-  # Bỏ comment khối dưới khi đã có tenant Auth0 thật (Phase 3).
-  # security:
-  #   oauth2:
-  #     client:
-  #       registration:
-  #         auth0:
-  #           client-id: ${AUTH0_CLIENT_ID}
-  #           client-secret: ${AUTH0_CLIENT_SECRET}
-  #           scope: openid,profile,email
-  #           authorization-grant-type: authorization_code
-  #           redirect-uri: "{baseUrl}/login/oauth2/code/auth0"
-  #       provider:
-  #         auth0:
-  #           issuer-uri: "https://${AUTH0_DOMAIN}/"
+  # ===== Auth0 (Phase 3) =====
+  # AUTH0_* nằm trong application-local.properties (gitignored). Khi có các biến này,
+  # Spring tạo ClientRegistrationRepository → SecurityConfig tự bật oauth2Login.
+  security:
+    oauth2:
+      client:
+        registration:
+          auth0:
+            client-id: ${AUTH0_CLIENT_ID}
+            client-secret: ${AUTH0_CLIENT_SECRET}
+            scope: openid,profile,email
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/auth0"
+        provider:
+          auth0:
+            issuer-uri: "https://${AUTH0_DOMAIN}/"
 
   # Load file local (nếu có) — chứa AUTH0_* thật, gitignored
   config:
