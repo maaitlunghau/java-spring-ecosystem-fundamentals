@@ -43,8 +43,8 @@ public class User {
     @Column(name = "is_email_verified", nullable = false)
     private boolean isEmailVerified = false;
 
-    @Column(name = "is_enable", nullable = false)
-    private boolean isEnable = true;
+    @Column(name = "is_enabled", nullable = false)
+    private boolean isEnabled = true;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -72,7 +72,7 @@ public class User {
         String password, 
         Role role, 
         boolean isEmailVerified, 
-        boolean isEnable
+        boolean isEnabled
     ) 
     {
         this.fullName = fullName;
@@ -80,7 +80,7 @@ public class User {
         this.password = password;
         this.role = role;
         this.isEmailVerified = isEmailVerified;
-        this.isEnable = isEnable;
+        this.isEnabled = isEnabled;
     }
 
     public Long getId() {
@@ -135,12 +135,12 @@ public class User {
         this.isEmailVerified = isEmailVerified;
     }
 
-    public boolean isEnable() {
-        return isEnable;
+    public boolean isEnabled() {
+        return isEnabled;
     }
 
-    public void setEnable(boolean isEnable) {
-        this.isEnable = isEnable;
+    public void setEnabled(boolean isEnabled) {
+        this.isEnabled = isEnabled;
     }
 
     public LocalDateTime getCreatedAt() {
@@ -166,7 +166,7 @@ public class User {
     @Override
     public String toString() {
         return "User [id=" + id + ", fullName=" + fullName + ", email=" + email + ", role=" + role + ", isEmailVerified="
-                + isEmailVerified + ", isEnable=" + isEnable + ", createdAt=" + createdAt
+                + isEmailVerified + ", isEnabled=" + isEnabled + ", createdAt=" + createdAt
                 + ", updatedAt=" + updatedAt + "]";
     }
 }

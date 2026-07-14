@@ -33,9 +33,9 @@ public final class UserSpecs {
         };
     }
 
-    public static Specification<User> enable(Boolean isEnable) {
+    public static Specification<User> enable(Boolean isEnabled) {
         return (root, query, cb) -> 
-            isEnable == null ? null : cb.equal(root.get("isEnable"), isEnable);
+            isEnabled == null ? null : cb.equal(root.get("isEnabled"), isEnabled);
     }
 
     public static Specification<User> emailVerified(Boolean isEmailVerified) {
