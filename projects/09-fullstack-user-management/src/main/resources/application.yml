@@ -3,7 +3,7 @@ spring:
     name: 09-fullstack-user-management
 
   datasource:
-    url: "jdbc:mysql://${MYSQL_HOST:localhost}:3306/user_management?useSSL=false&serverTimezone=UTC&createDatabaseIfNotExist=true"
+    url: "jdbc:mysql://${MYSQL_HOST:localhost}:3306/user_management?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&createDatabaseIfNotExist=true"
     username: root
     password: "112233"
     driver-class-name: com.mysql.cj.jdbc.Driver
