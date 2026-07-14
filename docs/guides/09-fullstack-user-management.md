@@ -1992,9 +1992,10 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+/** Người dùng tự đăng ký (khác CreateUserRequest — endpoint đó dành cho admin tạo). */
 public record RegisterRequest(
         @NotBlank @Email String email,
-        @NotBlank @Size(min = 6) String password,
+        @NotBlank @Size(min = 6, message = "Password tối thiểu 6 ký tự") String password,
         @NotBlank String fullName
 ) {}
 ```
@@ -2007,6 +2008,7 @@ package com.maaitlunghau.__fullstack_user_management.dto.request;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 
+/** Đăng nhập — không đặt @Size cho password để không lộ policy khi login. */
 public record LoginRequest(
         @NotBlank @Email String email,
         @NotBlank String password
@@ -2020,6 +2022,7 @@ package com.maaitlunghau.__fullstack_user_management.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 
+/** Xin access token mới — refreshToken là chuỗi opaque client nhận lúc login. */
 public record RefreshRequest(@NotBlank String refreshToken) {}
 ```
 
@@ -2030,7 +2033,6 @@ package com.maaitlunghau.__fullstack_user_management.dto.request;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 
 public record ForgotPasswordRequest(@NotBlank @Email String email) {}
 ```
@@ -2043,16 +2045,25 @@ import jakarta.validation.constraints.Size;
 
 public record ResetPasswordRequest(
         @NotBlank String token,
-        @NotBlank @Size(min = 6) String newPassword
+        @NotBlank @Size(min = 6, message = "Password tối thiểu 6 ký tự") String newPassword
 ) {}
 ```
 
-`dto/response/AuthResponse.java`:
+`dto/response/AuthResponse.java` — dạng token response kiểu OAuth2 (thêm `tokenType` + `expiresIn` để FE biết khi nào cần refresh chủ động):
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.dto.response;
 
-public record AuthResponse(String accessToken, String refreshToken) {}
+public record AuthResponse(
+        String accessToken,
+        String refreshToken,
+        String tokenType,      // luôn "Bearer"
+        long expiresIn         // số giây access token còn sống
+) {
+    public static AuthResponse of(String accessToken, String refreshToken, long expiresInSeconds) {
+        return new AuthResponse(accessToken, refreshToken, "Bearer", expiresInSeconds);
+    }
+}
 ```
 
 ## Bước 29 — `AuthService.java`
