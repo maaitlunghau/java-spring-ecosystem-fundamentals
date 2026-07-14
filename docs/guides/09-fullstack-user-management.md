@@ -788,6 +788,7 @@ package com.maaitlunghau.__fullstack_user_management.exception;
 import com.maaitlunghau.__fullstack_user_management.dto.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.core.AuthenticationException;
@@ -839,6 +840,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleAuthentication(AuthenticationException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
             .body(ApiResponse.message(401, "Xác thực thất bại"));
+    }
+
+    // Không đủ quyền từ @PreAuthorize (Bước 32) → 403, nếu không sẽ bị catch-all nuốt thành 500
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(ApiResponse.message(403, "Access denied — insufficient permission"));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -2482,16 +2490,54 @@ public class MeController {
 
 > `@AuthenticationPrincipal User user` inject trực tiếp entity `User` vì nó `implements UserDetails` và filter đã set nó làm principal.
 
-## Bước 32 — RBAC bằng `@PreAuthorize` (tùy chọn, mịn hơn)
+## Bước 32 — RBAC bằng `@PreAuthorize` (method-level, mịn hơn URL)
 
-`SecurityConfig` đã chặn `/api/users/**` = `hasRole("ADMIN")` ở tầng URL. Nếu muốn phân quyền tới từng method (ví dụ vừa cho ADMIN vừa cho chủ sở hữu), dùng `@PreAuthorize` trong controller/service:
+Rule URL `hasRole("ADMIN")` không diễn tả được luật kiểu **"ADMIN hoặc chính chủ"**. Ta chuyển phân quyền `/api/users` từ URL-level sang **method-level** bằng `@PreAuthorize` (đã bật `@EnableMethodSecurity` ở Bước 26). Lợi ích: rule nằm ngay cạnh code, và biểu diễn được luật mịn.
+
+**(1) Bỏ rule URL trong `SecurityConfig`** để `@PreAuthorize` nắm quyền (nếu còn rule URL, non-admin bị chặn trước khi luật owner-or-admin kịp chạy):
 
 ```java
-// ví dụ: chỉ ADMIN mới gán role
-@PreAuthorize("hasRole('ADMIN')")
-@PatchMapping("/{id}/roles")
-public ApiResponse<UserResponse> assignRoles(@PathVariable Long id, @RequestBody Set<String> roles) { ... }
+.authorizeHttpRequests(auth -> auth
+    .requestMatchers("/api/auth/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
+    // BỎ dòng: .requestMatchers("/api/users/**").hasRole("ADMIN")
+    // → /api/users/** phân quyền ở method-level bằng @PreAuthorize
+    .anyRequest().authenticated()
+)
 ```
+
+**(2) Thêm `@PreAuthorize` vào `UserController`** — `getById` dùng owner-or-admin:
+
+```java
+@GetMapping
+@PreAuthorize("hasRole('ADMIN')")
+public ApiResponse<Page<UserResponse>> list(...) { ... }
+
+// ADMIN xem mọi user; USER chỉ xem chính mình.
+// #id = biến path, principal.id = getId() của user đang đăng nhập (principal là entity User).
+@GetMapping("/{id}")
+@PreAuthorize("hasRole('ADMIN') or #id == principal.id")
+public ApiResponse<UserResponse> getById(@PathVariable Long id) { ... }
+
+@PostMapping   @PreAuthorize("hasRole('ADMIN')")  public ... create(...) { ... }
+@PutMapping    @PreAuthorize("hasRole('ADMIN')")  public ... update(...) { ... }
+@DeleteMapping @PreAuthorize("hasRole('ADMIN')")  public ... delete(...) { ... }
+```
+
+> `#id` cần tên tham số ở bytecode — Spring Boot parent POM đã bật `-parameters` sẵn nên dùng được.
+
+**(3) BẮT BUỘC thêm handler 403 cho method security.** `@PreAuthorize` ném `AccessDeniedException` **bên trong controller** (khác với denial ở URL-level do filter xử lý qua `CustomAccessDeniedHandler`). Nếu không bắt riêng, catch-all `@ExceptionHandler(Exception.class)` sẽ nuốt nó thành **500**. Thêm vào `GlobalExceptionHandler` (Bước 11):
+
+```java
+import org.springframework.security.access.AccessDeniedException;
+
+@ExceptionHandler(AccessDeniedException.class)
+public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
+    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+        .body(ApiResponse.message(403, "Access denied — insufficient permission"));
+}
+```
+
+**Kết quả test:** USER list → 403; USER GET chính mình → 200; USER GET người khác → 403; ADMIN mọi thứ → 200; không token → 401. Tất cả body 403 là JSON (không phải 500).
 
 ## Bước 33 — Chạy & test Phase 2
 

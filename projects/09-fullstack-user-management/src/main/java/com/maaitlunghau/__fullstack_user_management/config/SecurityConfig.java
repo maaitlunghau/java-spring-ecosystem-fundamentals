@@ -51,7 +51,7 @@ public class SecurityConfig {
                     "/api/auth/**",                       // đăng ký / login / refresh / verify
                     "/swagger-ui/**", "/v3/api-docs/**"   // API docs (khi thêm springdoc)
                 ).permitAll()
-                .requestMatchers("/api/users/**").hasRole("ADMIN")   // quản trị user
+                // /api/users/** phân quyền ở method-level bằng @PreAuthorize (xem UserController)
                 .anyRequest().authenticated()
             )
             .exceptionHandling(e -> e
