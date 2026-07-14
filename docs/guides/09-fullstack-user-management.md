@@ -2964,7 +2964,16 @@ curl http://localhost:8081/api/me -H "Authorization: Bearer <ACCESS>"
 
 ## Bước 43 — Rate limiting với Bucket4j
 
-Chặn brute-force `/api/auth/login`, `/api/auth/register`, `/api/auth/forgot-password`. Dùng token bucket: mỗi IP có 1 bucket, mỗi request tốn 1 token, hết token → **429**.
+Chặn brute-force `/api/auth/login`, `/api/auth/register`, `/api/auth/forgot-password`. Dùng token bucket: mỗi (IP + path) có 1 bucket, mỗi request tốn 1 token, hết token → **429**.
+
+> **Thêm dependency** vào `pom.xml` (project init chưa có):
+> ```xml
+> <dependency>
+>     <groupId>com.bucket4j</groupId>
+>     <artifactId>bucket4j-core</artifactId>
+>     <version>8.10.1</version>
+> </dependency>
+> ```
 
 `security/RateLimitFilter.java`:
 
@@ -2995,7 +3004,11 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
+
+    public RateLimitFilter(ObjectMapper objectMapper) {   // inject mapper Spring (Jackson 3)
+        this.objectMapper = objectMapper;
+    }
 
     /** 5 request / phút / IP cho các endpoint auth nhạy cảm. */
     private Bucket newBucket() {
@@ -3006,7 +3019,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getServletPath();
+        String path = request.getRequestURI();
         return !(path.equals("/api/auth/login")
               || path.equals("/api/auth/register")
               || path.equals("/api/auth/forgot-password"));
@@ -3018,7 +3031,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
                                     @NonNull FilterChain filterChain)
             throws ServletException, IOException {
 
-        String key = request.getRemoteAddr() + ":" + request.getServletPath();
+        String key = request.getRemoteAddr() + ":" + request.getRequestURI();
         Bucket bucket = buckets.computeIfAbsent(key, k -> newBucket());
 
         if (bucket.tryConsume(1)) {
@@ -3046,21 +3059,28 @@ public class RateLimitFilter extends OncePerRequestFilter {
 ```java
 package com.maaitlunghau.__fullstack_user_management.config;
 
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.List;
-
 @Configuration
 public class CorsConfig {
+
+    private final String frontendUrl;
+
+    public CorsConfig(@Value("${app.frontend-url}") String frontendUrl) {
+        this.frontendUrl = frontendUrl;
+    }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173"));   // Vite dev
+        config.setAllowedOrigins(List.of(frontendUrl));   // Vite dev :5173 (từ app.frontend-url)
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         config.setAllowCredentials(true);
@@ -3077,7 +3097,7 @@ Bật CORS trong `SecurityConfig` (thêm 1 dòng vào filter chain):
 
 ```java
 // thêm ngay sau .csrf(...):
-.cors(cors -> {})   // dùng CorsConfigurationSource bean ở trên
+.cors(Customizer.withDefaults())   // dùng CorsConfigurationSource bean ở trên
 ```
 
 ## Bước 45 — CSRF (quyết định policy)
@@ -3086,6 +3106,23 @@ Bật CORS trong `SecurityConfig` (thêm 1 dòng vào filter chain):
 - **Nếu** sau này chuyển sang lưu token trong **httpOnly cookie** → phải **bật lại CSRF** với `CookieCsrfTokenRepository.withHttpOnlyFalse()` và FE gửi kèm header `X-XSRF-TOKEN`.
 
 > Ghi nhớ: CSRF chỉ nguy hiểm khi trình duyệt **tự động** đính kèm credential (cookie). Token trong header do JS chủ động set → không bị CSRF → tắt hợp lý.
+
+### Bonus — trả 404 cho route lạ (thay vì 500)
+
+Catch-all `@ExceptionHandler(Exception.class)` (Bước 11) nuốt cả `NoResourceFoundException` của route không tồn tại thành 500. Thêm handler riêng để trả 404 đúng nghĩa:
+
+```java
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+// đặt TRƯỚC handler Exception.class
+@ExceptionHandler(NoResourceFoundException.class)
+public ResponseEntity<ApiResponse<Void>> handleNoResource(NoResourceFoundException ex) {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(ApiResponse.message(404, "Không tìm thấy tài nguyên: " + ex.getResourcePath()));
+}
+```
+
+> Lưu ý: chỉ route **permitAll** không tồn tại mới ra 404. Route cần auth mà không có token vẫn ra **401** (đúng — chưa xác thực thì không được biết route có tồn tại hay không).
 
 ## Bước 46 — Swagger / OpenAPI
 
