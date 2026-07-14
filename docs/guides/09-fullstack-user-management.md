@@ -1394,27 +1394,59 @@ public class VerificationToken {
 
 ## Bước 20 — Repositories mới
 
+Vì entity lưu `tokenHash` (không phải token gốc), mọi tra cứu đều theo **`findByTokenHash`** — service sẽ hash token client gửi lên rồi mới tra.
+
+> **Lưu ý JPQL:** thuộc tính là **tên field** (`rt.isRevoked`, `vt.isUsed`), không phải `rt.revoked`/`vt.used`.
+>
+> **Bulk update (`@Modifying`)** đi thẳng xuống DB, không qua persistence context. Thêm `flushAutomatically = true` (flush thay đổi đang chờ trước khi update) và `clearAutomatically = true` (xoá context sau update để lần đọc kế không dính entity cũ/stale).
+
 `RefreshTokenRepository.java`:
 
 ```java
 package com.maaitlunghau.__fullstack_user_management.repository;
 
-import com.maaitlunghau.__fullstack_user_management.entity.RefreshToken;
-import com.maaitlunghau.__fullstack_user_management.entity.User;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import java.util.Optional;
+import com.maaitlunghau.__fullstack_user_management.entity.RefreshToken;
+import com.maaitlunghau.__fullstack_user_management.entity.RevokedReason;
+import com.maaitlunghau.__fullstack_user_management.entity.User;
 
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long> {
 
-    Optional<RefreshToken> findByToken(String token);
+    /** Tra token khi refresh — nhận vào là SHA-256(token), KHÔNG phải token gốc. */
+    Optional<RefreshToken> findByTokenHash(String tokenHash);
 
-    @Modifying
-    @Query("UPDATE RefreshToken rt SET rt.revoked = true WHERE rt.user = :user AND rt.revoked = false")
-    void revokeAllByUser(@Param("user") User user);
+    /** Các phiên đang hoạt động của user — phục vụ UI "thiết bị đang đăng nhập". */
+    List<RefreshToken> findByUserAndIsRevokedFalse(User user);
+
+    /** Thu hồi cả họ token của MỘT PHIÊN — dùng cho reuse detection. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+        UPDATE RefreshToken rt
+        SET rt.isRevoked = true, rt.revokedReason = :reason, rt.revokedAt = :now
+        WHERE rt.sessionId = :sessionId AND rt.isRevoked = false
+        """)
+    int revokeAllActiveBySession(@Param("sessionId") String sessionId,
+                                 @Param("reason") RevokedReason reason,
+                                 @Param("now") Instant now);
+
+    /** Thu hồi mọi token của MỘT USER — dùng khi đổi/reset mật khẩu, logout-everywhere. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+        UPDATE RefreshToken rt
+        SET rt.isRevoked = true, rt.revokedReason = :reason, rt.revokedAt = :now
+        WHERE rt.user = :user AND rt.isRevoked = false
+        """)
+    int revokeAllActiveByUser(@Param("user") User user,
+                              @Param("reason") RevokedReason reason,
+                              @Param("now") Instant now);
 }
 ```
 
@@ -1423,13 +1455,32 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
 ```java
 package com.maaitlunghau.__fullstack_user_management.repository;
 
-import com.maaitlunghau.__fullstack_user_management.entity.VerificationToken;
-import org.springframework.data.jpa.repository.JpaRepository;
-
+import java.time.Instant;
 import java.util.Optional;
 
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import com.maaitlunghau.__fullstack_user_management.entity.User;
+import com.maaitlunghau.__fullstack_user_management.entity.VerificationToken;
+
 public interface VerificationTokenRepository extends JpaRepository<VerificationToken, Long> {
-    Optional<VerificationToken> findByToken(String token);
+
+    /** Tra token khi verify/reset — nhận vào là SHA-256(token), KHÔNG phải token gốc. */
+    Optional<VerificationToken> findByTokenHash(String tokenHash);
+
+    /** Vô hiệu hoá token cùng loại còn hiệu lực trước khi phát token mới → chỉ link mới nhất dùng được. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+        UPDATE VerificationToken vt
+        SET vt.isUsed = true, vt.usedAt = :now
+        WHERE vt.user = :user AND vt.type = :type AND vt.isUsed = false
+        """)
+    int markAllActiveAsUsed(@Param("user") User user,
+                            @Param("type") VerificationToken.Type type,
+                            @Param("now") Instant now);
 }
 ```
 
