@@ -51,7 +51,8 @@ public class VerificationToken {
     @Column(name = "token_hash", nullable = false, unique = true, length = 64)
     private String tokenHash;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    // @SoftDelete trên User buộc quan hệ to-one phải EAGER (Hibernate không cho LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
