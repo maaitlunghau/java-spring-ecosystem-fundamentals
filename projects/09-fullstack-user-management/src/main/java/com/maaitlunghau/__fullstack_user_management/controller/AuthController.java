@@ -89,6 +89,12 @@ public class AuthController {
             refreshToken = CookieUtils.readCookie(servletRequest, "refresh_token");
         }
 
+        if (accessToken == null) {
+            // Không token để blacklist (client đã mất cookie) — vẫn xóa cookie, logout idempotent
+            CookieUtils.clearAuthCookies(response);
+            return ApiResponse.message(200, "Đăng xuất thành công");
+        }
+
         authService.logout(accessToken, refreshToken);
         CookieUtils.clearAuthCookies(response);
         return ApiResponse.message(200, "Đăng xuất thành công");
