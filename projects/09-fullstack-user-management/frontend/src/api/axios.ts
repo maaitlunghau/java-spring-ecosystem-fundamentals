@@ -22,8 +22,9 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+type Waiter = { resolve: () => void; reject: (err: unknown) => void }
 let isRefreshing = false
-let waiters: Array<() => void> = []
+let waiters: Waiter[] = []
 
 api.interceptors.response.use(
   (res) => res,
@@ -38,18 +39,21 @@ api.interceptors.response.use(
     original._retry = true
 
     if (isRefreshing) {
-      await new Promise<void>((resolve) => waiters.push(resolve))
+      await new Promise<void>((resolve, reject) => waiters.push({ resolve, reject }))
       return api(original)
     }
 
     isRefreshing = true
     try {
       await api.post('/api/auth/refresh-token')
-      waiters.forEach((w) => w())
+      const queued = waiters
       waiters = []
+      queued.forEach((w) => w.resolve())
       return api(original)
     } catch (refreshErr) {
+      const queued = waiters
       waiters = []
+      queued.forEach((w) => w.reject(refreshErr))
       window.location.href = '/login'
       return Promise.reject(refreshErr)
     } finally {
