@@ -2,6 +2,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { useLogin } from '../hooks/useAuth'
 import { Button } from '../components/ui/Button'
 import { FormField } from '../components/ui/FormField'
@@ -21,12 +22,32 @@ export default function LoginPage() {
   const { register, handleSubmit, formState: { errors } } =
     useForm<FormValues>({ resolver: zodResolver(schema) })
   const login = useLogin()
+  const qc = useQueryClient()
   const navigate = useNavigate()
   const location = useLocation()
   const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
 
-  const onSubmit = (values: FormValues) =>
-    login.mutate(values, { onSuccess: () => navigate(from, { replace: true }) })
+  const onSubmit = async (values: FormValues) => {
+    try {
+      // 1. Call login API → backend sets httpOnly cookies
+      console.log('[LOGIN] Step 1: calling login API...')
+      const loginRes = await login.mutateAsync(values)
+      console.log('[LOGIN] Step 1 OK:', loginRes.status, loginRes.data)
+
+      // 2. Explicitly await the ['me'] refetch so user data is in cache
+      console.log('[LOGIN] Step 2: refetching /api/me...')
+      await qc.refetchQueries({ queryKey: ['me'] })
+      const meData = qc.getQueryData(['me'])
+      console.log('[LOGIN] Step 2 OK, me data:', meData)
+
+      // 3. Only navigate AFTER cache is populated → ProtectedRoute lets us through
+      console.log('[LOGIN] Step 3: navigating to', from)
+      navigate(from, { replace: true })
+    } catch (err) {
+      console.error('[LOGIN] FAILED at some step:', err)
+      // login.isError becomes true automatically — form shows error message
+    }
+  }
 
   return (
     <div>

@@ -55,7 +55,8 @@ api.interceptors.response.use(
       const queued = waiters
       waiters = []
       queued.forEach((w) => w.reject(refreshErr))
-      window.location.href = '/login'
+      // Redirect to SPA login page (not backend URL)
+      window.location.replace(window.location.origin + '/login')
       return Promise.reject(refreshErr)
     } finally {
       isRefreshing = false

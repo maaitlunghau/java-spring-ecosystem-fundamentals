@@ -12,7 +12,7 @@ import {
   IconPanelLeft, IconChevronDown, IconShield,
 } from '../icons'
 import { cn } from '../../lib/utils'
-import { authApi } from '../../api/auth'
+import { useLogout } from '../../hooks/useAuth'
 
 const SIDEBAR_KEY = 'sidebar_collapsed'
 
@@ -140,14 +140,17 @@ export function AppLayout() {
     return () => { document.body.style.overflow = '' }
   }, [mobileOpen])
 
+  const logoutMutation = useLogout()
+
   const handleLogout = async () => {
     setLoggingOut(true)
-    try {
-      await authApi.logout()
-    } catch {}
-    setLoggingOut(false)
-    toast('Đã đăng xuất', 'success')
-    navigate('/login')
+    logoutMutation.mutate(undefined, {
+      onSettled: () => {
+        setLoggingOut(false)
+        toast('Đã đăng xuất', 'success')
+        navigate('/login')
+      }
+    })
   }
 
   const sidebarContent = (isMobile = false) => (

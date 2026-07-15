@@ -11,18 +11,17 @@ export function useMe() {
 }
 
 export function useLogin() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: authApi.login,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
-  })
+  return useMutation({ mutationFn: authApi.login })
 }
 
 export function useLogout() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: authApi.logout,
-    onSuccess: () => qc.setQueryData(['me'], null),
+    onSettled: () => {
+      qc.setQueryData(['me'], null)
+      qc.clear()
+    },
   })
 }
 

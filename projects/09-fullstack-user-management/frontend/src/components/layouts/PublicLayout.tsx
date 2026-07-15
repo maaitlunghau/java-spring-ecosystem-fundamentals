@@ -1,6 +1,8 @@
 import { Link, Outlet } from 'react-router-dom'
 import { useTheme, type Theme } from '../../context/ThemeProvider'
+import { useAuth } from '../../context/AuthProvider'
 import { Button } from '../ui/Button'
+import { Avatar } from '../ui/Avatar'
 import { IconMoon, IconSun, IconMonitor } from '../icons'
 import { cn } from '../../lib/utils'
 
@@ -33,6 +35,8 @@ function ThemeToggle() {
 }
 
 export function PublicLayout() {
+  const { user } = useAuth()
+
   return (
     <div className="min-h-screen flex flex-col bg-white dark:bg-neutral-950">
       <header className="sticky top-0 z-30 border-b border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-950/80 backdrop-blur-sm">
@@ -48,12 +52,28 @@ export function PublicLayout() {
           </nav>
           <div className="flex items-center gap-3">
             <ThemeToggle />
-            <Link to="/login">
-              <Button variant="secondary" size="sm">Đăng nhập</Button>
-            </Link>
-            <Link to="/register" className="hidden sm:block">
-              <Button size="sm">Dùng miễn phí</Button>
-            </Link>
+            {user ? (
+              <div className="flex items-center gap-3">
+                <Link to="/dashboard" className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
+                  <Avatar name={user.fullName ?? 'User'} src={user.avatarUrl ?? undefined} size="sm" />
+                  <span className="hidden sm:block text-sm font-medium text-neutral-700 dark:text-neutral-300 max-w-[120px] truncate">
+                    {user.fullName}
+                  </span>
+                </Link>
+                <Link to="/dashboard">
+                  <Button size="sm">Vào Dashboard</Button>
+                </Link>
+              </div>
+            ) : (
+              <>
+                <Link to="/login">
+                  <Button variant="secondary" size="sm">Đăng nhập</Button>
+                </Link>
+                <Link to="/register" className="hidden sm:block">
+                  <Button size="sm">Dùng miễn phí</Button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </header>

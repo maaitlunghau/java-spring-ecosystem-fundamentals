@@ -28,8 +28,8 @@ export default function OAuthCallbackPage() {
     called.current = true
 
     authApi.oauth2Exchange(code)
-      .then(() => {
-        qc.invalidateQueries({ queryKey: ['me'] })
+      .then(async () => {
+        await qc.refetchQueries({ queryKey: ['me'] })
         navigate('/dashboard', { replace: true })
       })
       .catch(() => {
