@@ -7,6 +7,8 @@ import org.springframework.http.ResponseCookie;
 
 import com.maaitlunghau.__fullstack_user_management.dto.response.AuthResponse;
 
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 public final class CookieUtils {
@@ -28,6 +30,17 @@ public final class CookieUtils {
 
         response.addHeader(HttpHeaders.SET_COOKIE, access.toString());
         response.addHeader(HttpHeaders.SET_COOKIE, refresh.toString());
+    }
+
+    public static String readCookie(HttpServletRequest request, String name) {
+        if (request.getCookies() != null) {
+            for (Cookie c : request.getCookies()) {
+                if (name.equals(c.getName())) {
+                    return c.getValue();
+                }
+            }
+        }
+        return null;
     }
 
     public static void clearAuthCookies(HttpServletResponse response) {

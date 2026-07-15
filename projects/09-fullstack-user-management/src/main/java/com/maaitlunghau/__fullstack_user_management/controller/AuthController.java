@@ -70,11 +70,25 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ApiResponse<Void> logout(@RequestHeader("Authorization") String authHeader,
-                                    @RequestBody(required = false) LogoutRequest request,
-                                    HttpServletResponse response) {
-        String accessToken = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+    public ApiResponse<Void> logout(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestBody(required = false) LogoutRequest request,
+            HttpServletRequest servletRequest,
+            HttpServletResponse response) {
+
+        String accessToken = null;
+        if (authHeader != null) {
+            accessToken = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+        }
+        if (accessToken == null) {
+            accessToken = CookieUtils.readCookie(servletRequest, "access_token");
+        }
+
         String refreshToken = request != null ? request.refreshToken() : null;
+        if (refreshToken == null) {
+            refreshToken = CookieUtils.readCookie(servletRequest, "refresh_token");
+        }
+
         authService.logout(accessToken, refreshToken);
         CookieUtils.clearAuthCookies(response);
         return ApiResponse.message(200, "Đăng xuất thành công");
