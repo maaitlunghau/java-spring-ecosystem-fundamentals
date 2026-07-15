@@ -16,6 +16,7 @@ import com.maaitlunghau.__fullstack_user_management.service.TokenBlacklist;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -49,13 +50,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
-        String header = request.getHeader("Authorization");
-        if (header == null || !header.startsWith("Bearer ")) {
-            filterChain.doFilter(request, response);   // không có token → để endpoint/EntryPoint xử lý
+        String token = resolveToken(request);
+        if (token == null) {
+            filterChain.doFilter(request, response);
             return;
         }
-
-        String token = header.substring(7);   // bỏ "Bearer "
         try {
             String username = jwtService.extractUsername(token);
             String jti = jwtService.extractJti(token);
@@ -79,5 +78,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private String resolveToken(HttpServletRequest request) {
+        if (request.getCookies() != null) {
+            for (Cookie c : request.getCookies()) {
+                if ("access_token".equals(c.getName())) {
+                    return c.getValue();
+                }
+            }
+        }
+        String header = request.getHeader("Authorization");
+        if (header != null && header.startsWith("Bearer ")) {
+            return header.substring(7);
+        }
+        return null;
     }
 }
