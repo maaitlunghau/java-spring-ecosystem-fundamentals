@@ -25,3 +25,19 @@ export function useLogout() {
     onSuccess: () => qc.setQueryData(['me'], null),
   })
 }
+
+export function useRegister() {
+  return useMutation({ mutationFn: authApi.register })
+}
+
+export function useForgotPassword() {
+  return useMutation({ mutationFn: authApi.forgotPassword })
+}
+
+export function useResetPassword() {
+  return useMutation({ mutationFn: authApi.resetPassword })
+}
+
+export function useVerifyEmail() {
+  return useMutation({ mutationFn: authApi.verifyEmail })
+}
