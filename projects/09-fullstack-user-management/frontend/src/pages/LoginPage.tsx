@@ -1,0 +1,132 @@
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
+import { useLogin } from '../hooks/useAuth'
+import { Button } from '../components/ui/Button'
+import { FormField } from '../components/ui/FormField'
+import { Input } from '../components/ui/Input'
+import { PasswordInput } from '../components/ui/PasswordInput'
+import { Label } from '../components/ui/Label'
+import { IconAuth0 } from '../components/icons'
+import { API_URL } from '../lib/env'
+
+const schema = z.object({
+  email: z.string().email('Email không hợp lệ'),
+  password: z.string().min(1, 'Bắt buộc'),
+})
+type FormValues = z.infer<typeof schema>
+
+export default function LoginPage() {
+  const { register, handleSubmit, formState: { errors } } =
+    useForm<FormValues>({ resolver: zodResolver(schema) })
+  const login = useLogin()
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
+
+  const onSubmit = async (values: FormValues) => {
+    try {
+      // 1. Call login API → backend sets httpOnly cookies
+      console.log('[LOGIN] Step 1: calling login API...')
+      const loginRes = await login.mutateAsync(values)
+      console.log('[LOGIN] Step 1 OK:', loginRes.status, loginRes.data)
+
+      // 2. Explicitly await the ['me'] refetch so user data is in cache
+      console.log('[LOGIN] Step 2: refetching /api/me...')
+      await qc.refetchQueries({ queryKey: ['me'] })
+      const meData = qc.getQueryData(['me'])
+      console.log('[LOGIN] Step 2 OK, me data:', meData)
+
+      // 3. Only navigate AFTER cache is populated → ProtectedRoute lets us through
+      console.log('[LOGIN] Step 3: navigating to', from)
+      navigate(from, { replace: true })
+    } catch (err) {
+      console.error('[LOGIN] FAILED at some step:', err)
+      // login.isError becomes true automatically — form shows error message
+    }
+  }
+
+  return (
+    <div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50">Đăng nhập</h1>
+        <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
+          Chưa có tài khoản?{' '}
+          <Link to="/register" className="font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400">
+            Tạo tài khoản miễn phí
+          </Link>
+        </p>
+      </div>
+
+      {/* Social login */}
+      <a
+        href={`${API_URL}/oauth2/authorization/auth0`}
+        className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-4 py-2.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+      >
+        <IconAuth0 size={18} />
+        Tiếp tục với Auth0
+      </a>
+
+      <div className="relative my-2">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-neutral-200 dark:border-neutral-700" />
+        </div>
+        <div className="relative flex justify-center text-xs">
+          <span className="bg-white dark:bg-neutral-950 px-3 text-neutral-400">hoặc</span>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        <FormField
+          label={<Label htmlFor="email">Email</Label>}
+          error={errors.email?.message}
+        >
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            placeholder="you@example.com"
+            {...register('email')}
+            error={!!errors.email}
+          />
+        </FormField>
+
+        <FormField
+          label={
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Mật khẩu</Label>
+              <Link
+                to="/forgot-password"
+                className="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+              >
+                Quên mật khẩu?
+              </Link>
+            </div>
+          }
+          error={errors.password?.message}
+        >
+          <PasswordInput
+            id="password"
+            autoComplete="current-password"
+            placeholder="••••••••"
+            {...register('password')}
+            error={!!errors.password}
+          />
+        </FormField>
+
+        {login.isError && (
+          <p className="rounded-lg bg-danger-50 dark:bg-danger-900/20 px-3 py-2 text-sm text-danger-700 dark:text-danger-400">
+            Sai email hoặc mật khẩu. Vui lòng thử lại.
+          </p>
+        )}
+
+        <Button type="submit" className="w-full" loading={login.isPending}>
+          Đăng nhập
+        </Button>
+      </form>
+    </div>
+  )
+}
