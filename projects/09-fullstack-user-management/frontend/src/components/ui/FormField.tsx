@@ -3,7 +3,7 @@ import { cn } from '../../lib/utils'
 import { Label } from './Label'
 
 interface FormFieldProps {
-  label?: string
+  label?: ReactNode
   hint?: string
   error?: string
   required?: boolean
@@ -16,9 +16,9 @@ export function FormField({ label, hint, error, required, htmlFor, children, cla
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       {label && (
-        <Label htmlFor={htmlFor} required={required}>
-          {label}
-        </Label>
+        typeof label === 'string' ? (
+          <Label htmlFor={htmlFor} required={required}>{label}</Label>
+        ) : label
       )}
       {children}
       {error ? (

@@ -1,8 +1,13 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useLogin } from '../hooks/useAuth'
+import { Button } from '../components/ui/Button'
+import { FormField } from '../components/ui/FormField'
+import { Input } from '../components/ui/Input'
+import { PasswordInput } from '../components/ui/PasswordInput'
+import { Label } from '../components/ui/Label'
 
 const schema = z.object({
   email: z.string().email('Email không hợp lệ'),
@@ -17,22 +22,68 @@ export default function LoginPage() {
   const navigate = useNavigate()
 
   const onSubmit = (values: FormValues) =>
-    login.mutate(values, { onSuccess: () => navigate('/users') })
+    login.mutate(values, { onSuccess: () => navigate('/dashboard') })
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="max-w-sm mx-auto mt-20 space-y-4">
-      <h1 className="text-2xl font-bold">Đăng nhập</h1>
-      <input {...register('email')} placeholder="Email"
-        className="w-full border rounded px-3 py-2" />
-      {errors.email && <p className="text-red-600 text-sm">{errors.email.message}</p>}
-      <input {...register('password')} type="password" placeholder="Mật khẩu"
-        className="w-full border rounded px-3 py-2" />
-      {errors.password && <p className="text-red-600 text-sm">{errors.password.message}</p>}
-      <button disabled={login.isPending}
-        className="w-full bg-blue-600 text-white rounded py-2 disabled:opacity-50">
-        {login.isPending ? 'Đang đăng nhập…' : 'Đăng nhập'}
-      </button>
-      {login.isError && <p className="text-red-600 text-sm">Sai email hoặc mật khẩu</p>}
-    </form>
+    <div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50">Đăng nhập</h1>
+        <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
+          Chưa có tài khoản?{' '}
+          <Link to="/register" className="font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400">
+            Tạo tài khoản miễn phí
+          </Link>
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        <FormField
+          label={<Label htmlFor="email">Email</Label>}
+          error={errors.email?.message}
+        >
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            placeholder="you@example.com"
+            {...register('email')}
+            error={!!errors.email}
+          />
+        </FormField>
+
+        <FormField
+          label={
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Mật khẩu</Label>
+              <Link
+                to="/forgot-password"
+                className="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+              >
+                Quên mật khẩu?
+              </Link>
+            </div>
+          }
+          error={errors.password?.message}
+        >
+          <PasswordInput
+            id="password"
+            autoComplete="current-password"
+            placeholder="••••••••"
+            {...register('password')}
+            error={!!errors.password}
+          />
+        </FormField>
+
+        {login.isError && (
+          <p className="rounded-lg bg-danger-50 dark:bg-danger-900/20 px-3 py-2 text-sm text-danger-700 dark:text-danger-400">
+            Sai email hoặc mật khẩu. Vui lòng thử lại.
+          </p>
+        )}
+
+        <Button type="submit" className="w-full" loading={login.isPending}>
+          Đăng nhập
+        </Button>
+      </form>
+    </div>
   )
 }
