@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useLogin } from '../hooks/useAuth'
 import { Button } from '../components/ui/Button'
 import { FormField } from '../components/ui/FormField'
@@ -22,9 +22,11 @@ export default function LoginPage() {
     useForm<FormValues>({ resolver: zodResolver(schema) })
   const login = useLogin()
   const navigate = useNavigate()
+  const location = useLocation()
+  const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
 
   const onSubmit = (values: FormValues) =>
-    login.mutate(values, { onSuccess: () => navigate('/dashboard') })
+    login.mutate(values, { onSuccess: () => navigate(from, { replace: true }) })
 
   return (
     <div>

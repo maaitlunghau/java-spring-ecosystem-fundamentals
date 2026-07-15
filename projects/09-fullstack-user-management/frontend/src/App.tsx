@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { GuestRoute } from './components/GuestRoute'
 import { PublicLayout } from './components/layouts/PublicLayout'
 import { AuthLayout } from './components/layouts/AuthLayout'
 import { AppLayout } from './components/layouts/AppLayout'
@@ -38,13 +39,15 @@ export default function App() {
           <Route path="/" element={<LandingPage />} />
         </Route>
 
-        {/* Auth — split-screen layout */}
-        <Route element={<AuthLayout />}>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/verify-email" element={<VerifyEmailPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
+        {/* Auth — split-screen layout, chỉ cho user chưa đăng nhập */}
+        <Route element={<GuestRoute />}>
+          <Route element={<AuthLayout />}>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+          </Route>
         </Route>
 
         {/* OAuth callback — no layout needed, backend redirects to /oauth/callback?code=xxx */}
