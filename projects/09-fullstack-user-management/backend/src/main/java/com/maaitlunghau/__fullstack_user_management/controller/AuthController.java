@@ -60,10 +60,14 @@ public class AuthController {
     }
 
     @PostMapping("/refresh-token")
-    public ApiResponse<AuthResponse> refresh(@Valid @RequestBody RefreshRequest request,
+    public ApiResponse<AuthResponse> refresh(@RequestBody(required = false) RefreshRequest request,
                                              HttpServletRequest servletRequest,
                                              HttpServletResponse response) {
-        AuthResponse tokens = authService.refresh(request.refreshToken(),
+        String refreshToken = request != null ? request.refreshToken() : null;
+        if (refreshToken == null) {
+            refreshToken = CookieUtils.readCookie(servletRequest, "refresh_token");
+        }
+        AuthResponse tokens = authService.refresh(refreshToken,
             RequestUtils.clientIp(servletRequest), RequestUtils.userAgent(servletRequest));
         CookieUtils.setAuthCookies(response, tokens);
         return ApiResponse.ok("Cấp access token mới", tokens);

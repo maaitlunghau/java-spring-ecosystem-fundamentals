@@ -31,7 +31,8 @@ api.interceptors.response.use(
   async (error) => {
     const original = error.config
     const status = error.response?.status
-    const isAuthCall = original?.url?.includes('/api/auth/')
+    // /api/me 401 = "not logged in" — let AuthProvider handle it, don't trigger refresh
+    const isAuthCall = original?.url?.includes('/api/auth/') || original?.url?.endsWith('/api/me')
 
     if (status !== 401 || isAuthCall || original?._retry) {
       return Promise.reject(error)
