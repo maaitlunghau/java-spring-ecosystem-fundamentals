@@ -8,14 +8,17 @@ import org.springframework.security.config.annotation.authentication.configurati
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.Customizer;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
+import com.maaitlunghau.__fullstack_user_management.security.CsrfCookieFilter;
 import com.maaitlunghau.__fullstack_user_management.security.CustomAccessDeniedHandler;
 import com.maaitlunghau.__fullstack_user_management.security.CustomAuthenticationEntryPoint;
 import com.maaitlunghau.__fullstack_user_management.security.JwtAuthenticationFilter;
@@ -57,7 +60,11 @@ public class SecurityConfig {
         boolean oauth2Enabled = clientRegistrationRepository.getIfAvailable() != null;
 
         http
-            .csrf(AbstractHttpConfigurer::disable)
+            .csrf(csrf -> csrf
+                .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+                .ignoringRequestMatchers("/api/auth/**")
+            )
             .cors(Customizer.withDefaults())   // dùng CorsConfigurationSource bean (CorsConfig)
             // OAuth2 authorization code cần lưu tạm state/nonce qua các redirect → IF_REQUIRED.
             // Khi chưa bật OAuth2 thì giữ STATELESS thuần cho API.
@@ -76,6 +83,7 @@ public class SecurityConfig {
                 .authenticationEntryPoint(authenticationEntryPoint)   // 401
                 .accessDeniedHandler(accessDeniedHandler)             // 403
             )
+            .addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         if (oauth2Enabled) {
