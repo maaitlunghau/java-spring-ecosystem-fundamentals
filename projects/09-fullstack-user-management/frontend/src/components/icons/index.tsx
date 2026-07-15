@@ -147,4 +147,11 @@ export function IconCopy({ size, ...p }: IconProps) {
 export function IconSidebar({ size, ...p }: IconProps) {
   return <Icon size={size} {...p}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="9" x2="9" y1="3" y2="21"/></Icon>
 }
+export function IconAuth0({ size = 16, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path d="M21.98 7.448 19.62 0h-7.773l2.358 7.448zM4.02 7.448h7.774L9.437 0H1.663zm4.967 15.04 2.358-7.449H3.571l-2.358 7.45zm13.44 0-2.358-7.449H11.66l2.358 7.45zM12 22.488l2.358-7.449H9.643z"/>
+    </svg>
+  )
+}
 

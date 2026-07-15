@@ -47,8 +47,8 @@ export default function App() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Route>
 
-        {/* OAuth callback — no layout needed */}
-        <Route path="/auth/callback" element={<OAuthCallbackPage />} />
+        {/* OAuth callback — no layout needed, backend redirects to /oauth/callback?code=xxx */}
+        <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
 
         {/* App — protected, with sidebar + topbar */}
         <Route element={<ProtectedRoute />}>

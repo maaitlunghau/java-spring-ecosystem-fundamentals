@@ -8,6 +8,8 @@ import { FormField } from '../components/ui/FormField'
 import { Input } from '../components/ui/Input'
 import { PasswordInput } from '../components/ui/PasswordInput'
 import { Label } from '../components/ui/Label'
+import { IconAuth0 } from '../components/icons'
+import { API_URL } from '../lib/env'
 
 const schema = z.object({
   email: z.string().email('Email không hợp lệ'),
@@ -34,6 +36,24 @@ export default function LoginPage() {
             Tạo tài khoản miễn phí
           </Link>
         </p>
+      </div>
+
+      {/* Social login */}
+      <a
+        href={`${API_URL}/oauth2/authorization/auth0`}
+        className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-4 py-2.5 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+      >
+        <IconAuth0 size={18} />
+        Tiếp tục với Auth0
+      </a>
+
+      <div className="relative my-2">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-neutral-200 dark:border-neutral-700" />
+        </div>
+        <div className="relative flex justify-center text-xs">
+          <span className="bg-white dark:bg-neutral-950 px-3 text-neutral-400">hoặc</span>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">

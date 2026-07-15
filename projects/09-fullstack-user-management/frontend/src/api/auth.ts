@@ -14,4 +14,6 @@ export const authApi = {
     api.post('/api/auth/forgot-password', { email }),
   resetPassword: (body: { token: string; newPassword: string }) =>
     api.post('/api/auth/reset-password', body),
+  oauth2Exchange: (code: string) =>
+    api.post('/api/auth/oauth2/exchange', null, { params: { code } }),
 }
