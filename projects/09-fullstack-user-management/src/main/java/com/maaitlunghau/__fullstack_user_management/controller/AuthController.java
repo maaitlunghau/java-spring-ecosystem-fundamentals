@@ -19,9 +19,11 @@ import com.maaitlunghau.__fullstack_user_management.dto.request.RegisterRequest;
 import com.maaitlunghau.__fullstack_user_management.dto.request.ResetPasswordRequest;
 import com.maaitlunghau.__fullstack_user_management.dto.response.AuthResponse;
 import com.maaitlunghau.__fullstack_user_management.service.AuthService;
+import com.maaitlunghau.__fullstack_user_management.util.CookieUtils;
 import com.maaitlunghau.__fullstack_user_management.util.RequestUtils;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 
 @RestController
@@ -49,17 +51,21 @@ public class AuthController {
 
     @PostMapping("/login")
     public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request,
-                                           HttpServletRequest servletRequest) {
+                                           HttpServletRequest servletRequest,
+                                           HttpServletResponse response) {
         AuthResponse tokens = authService.login(request,
             RequestUtils.clientIp(servletRequest), RequestUtils.userAgent(servletRequest));
+        CookieUtils.setAuthCookies(response, tokens);
         return ApiResponse.ok("Đăng nhập thành công", tokens);
     }
 
     @PostMapping("/refresh-token")
     public ApiResponse<AuthResponse> refresh(@Valid @RequestBody RefreshRequest request,
-                                             HttpServletRequest servletRequest) {
+                                             HttpServletRequest servletRequest,
+                                             HttpServletResponse response) {
         AuthResponse tokens = authService.refresh(request.refreshToken(),
             RequestUtils.clientIp(servletRequest), RequestUtils.userAgent(servletRequest));
+        CookieUtils.setAuthCookies(response, tokens);
         return ApiResponse.ok("Cấp access token mới", tokens);
     }
 

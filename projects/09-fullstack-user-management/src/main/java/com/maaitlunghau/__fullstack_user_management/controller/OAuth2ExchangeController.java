@@ -12,9 +12,11 @@ import com.maaitlunghau.__fullstack_user_management.exception.BadRequestExceptio
 import com.maaitlunghau.__fullstack_user_management.repository.UserRepository;
 import com.maaitlunghau.__fullstack_user_management.service.AuthService;
 import com.maaitlunghau.__fullstack_user_management.service.OneTimeCodeStore;
+import com.maaitlunghau.__fullstack_user_management.util.CookieUtils;
 import com.maaitlunghau.__fullstack_user_management.util.RequestUtils;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * FE gọi endpoint này với one-time code nhận từ URL callback → đổi lấy JWT nội bộ.
@@ -37,7 +39,8 @@ public class OAuth2ExchangeController {
     }
 
     @PostMapping("/oauth2/exchange")
-    public ApiResponse<AuthResponse> exchange(@RequestParam String code, HttpServletRequest request) {
+    public ApiResponse<AuthResponse> exchange(@RequestParam String code, HttpServletRequest request,
+                                              HttpServletResponse response) {
         Long userId = oneTimeCodeStore.consume(code);
         if (userId == null) {
             throw new BadRequestException("Code không hợp lệ hoặc đã hết hạn");
@@ -47,6 +50,7 @@ public class OAuth2ExchangeController {
 
         AuthResponse tokens = authService.issueNewSession(
             user, RequestUtils.clientIp(request), RequestUtils.userAgent(request));
+        CookieUtils.setAuthCookies(response, tokens);
         return ApiResponse.ok("Social login thành công", tokens);
     }
 }
